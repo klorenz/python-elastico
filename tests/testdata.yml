@@ -1,0 +1,7 @@
+# this is input for testdata generator
+index_pattern: 'mybeat-%Y-%m-%d'
+timestamp:
+  starttime: '2018-01-01'
+  endtime: '2018-01-05'
+  step:
+    seconds: 15

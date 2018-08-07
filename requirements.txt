@@ -1,0 +1,6 @@
+elasticsearch
+PyYAML
+pyaml
+argdeco
+markdown
+python-dateutil
