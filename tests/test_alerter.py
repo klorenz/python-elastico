@@ -34,9 +34,67 @@ def test_alerter_expand_rules():
     data = [x for x in Alerter.expand_rules(config)]
 
     assert data == [
-        {'a': 'a_value', 'key': 'foo', 'match': 'x', 'type': 'honey'},
-        {'b': 'bar', 'key': 'foo', 'match': 'y', 'type': 'boney'}
+        {'a': 'a_value', 'key': 'foo', 'match': 'x', 'type': 'honey', 'index': 'an_index', 'name': 'foo'},
+        {'b': 'bar', 'key': 'foo', 'match': 'y', 'type': 'boney', 'index': 'an_index', 'name': 'foo'}
         ]
+
+def test_alerter_expand_rules_foreach():
+    import logging
+    logging.getLogger().setLevel(logging.DEBUG)
+
+    from elastico.alert import Alerter
+    config = make_config("""
+        foo: bar
+        alert_defaults:
+            honey:
+                a: a_value
+            boney:
+                b: '{foo}'
+
+        rules:
+          - name: foo
+            foreach:
+                host:
+                    - foo
+                    - bar
+                mount_point:
+                    - x
+                    - y
+            index: an_index
+            alerts:
+            - type: honey
+              key: '{name}-{host}-{mount_point}'
+              match: x
+
+            - type: boney
+              key: '{name}-{host}-{mount_point}'
+              match: y
+    """)
+
+    data = [x for x in Alerter.expand_rules(config)]
+    expected = []
+    for host in ['foo', 'bar']:
+        for mount_point in ['x', 'y']:
+            expected.append({
+                'a': 'a_value',
+                'match': 'x',
+                'type': 'honey',
+                'index': 'an_index',
+                'name': 'foo',
+                'key': '{name}-{host}-{mount_point}',
+                'host': host,
+                'mount_point': mount_point
+            })
+            expected.append({
+                'b': 'bar',
+                'key': '{name}-{host}-{mount_point}',
+                'match': 'y',
+                'type': 'boney',
+                'index': 'an_index',
+                'name': 'foo',
+                'host': host,
+                'mount_point': mount_point
+            })
 
 
 def test_alerter_alert(monkeypatch):
@@ -72,6 +130,7 @@ def test_alerter_alert(monkeypatch):
             'test': {
                 'status': 'ok',
                 'match_hits': False,
+                'name': 'test',
                 'key': 'test',
                 'type': 'fatal',
                 'match': 'y',
@@ -80,6 +139,7 @@ def test_alerter_alert(monkeypatch):
         },
         'warning': {
             'test': {
+                'name': 'test',
                 'status': 'alert',
                 'match_hit': {'foo': 'bar'},
                 'match_hits': True,
@@ -130,6 +190,7 @@ def test_alerter_alert_elasticsearch(monkeypatch):
 
         assert status == {
             'fatal': {
+                'name': 'test',
                 'status': 'ok',
                 'match_hits': False,
                 'key': 'test',
@@ -138,6 +199,7 @@ def test_alerter_alert_elasticsearch(monkeypatch):
                 'match_hits_total': 0
             },
             'warning': {
+                'name': 'test',
                 'status': 'alert',
                 'match_hit': {'foo': 'bar'},
                 'match_hits': True,
@@ -188,11 +250,16 @@ def test_alerter_match():
                       index: test-alerter-match
         """), es_client=es)
 
-        alerter.process_rules(runtime=to_dt("2018-05-05 10:02:00"))
+        runtime = to_dt("2018-05-05 10:02:00")
+
+        alerter.process_rules(runtime=runtime)
 
         assert alerter.STATUS == {
             'fatal': {
                 'value-check': {
+                    'name': 'value-check',
+                    'runtime': runtime,
+                    'timeframe':{'minutes': 5},
                     'index': 'test-alerter-match',
                     'key': 'value-check',
                     'match': 'value:[0 TO 10]',
@@ -204,6 +271,9 @@ def test_alerter_match():
             },
             'warning': {
                 'value-check': {
+                    'name': 'value-check',
+                    'runtime': runtime,
+                    'timeframe':{'minutes': 5},
                     'index': 'test-alerter-match',
                     'key': 'value-check',
                     'match': 'value:[10 TO 13]',
@@ -215,7 +285,8 @@ def test_alerter_match():
             }
         }
 
-        alerter.process_rules(runtime=to_dt("2018-05-05 10:07:00"))
+        runtime = to_dt("2018-05-05 10:07:00")
+        alerter.process_rules(runtime=runtime)
 
         import pprint
         pprint.pprint(alerter.STATUS)
@@ -224,6 +295,9 @@ def test_alerter_match():
         assert alerter.STATUS == {
             'fatal': {
                 'value-check': {
+                    'name': 'value-check',
+                    'runtime': runtime,
+                    'timeframe':{'minutes': 5},
                     'index': 'test-alerter-match',
                      'key': 'value-check',
                      'match': 'value:[0 TO 10]',
@@ -247,6 +321,9 @@ def test_alerter_match():
             },
             'warning': {
                 'value-check': {
+                    'name': 'value-check',
+                    'runtime': runtime,
+                    'timeframe':{'minutes': 5},
                     'index': 'test-alerter-match',
                     'key': 'value-check',
                     'match': 'value:[10 TO 13]',
@@ -357,6 +434,7 @@ def test_alerter_email(monkeypatch):
                   foo: bar
                 match_hits: true
                 match_hits_total: 4
+                name: test
                 notify:
                   - email_to: treebeard@middle.earth
                     transport: email
@@ -375,6 +453,7 @@ def test_alerter_email(monkeypatch):
               foo: bar
             match_hits: true
             match_hits_total: 4
+            name: test
             notify:
               - email_to: treebeard@middle.earth
                 transport: email

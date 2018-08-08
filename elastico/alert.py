@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from dateutil.parser import parse as dt_parse
+from itertools import product
 
 import logging, sys, pyaml
 log = logging.getLogger('elastico.alert')
@@ -414,13 +415,20 @@ class Alerter:
         else:
             data_sets = [({},)]
 
+        visited_keys = []
+
         for data_set in data_sets:
+            log.debug("data_set: %s", data_set)
+
+            # get arguments
             r = self.get_config_value('arguments', {}).copy()
 
+            # get defaults
             defaults = self.get_config_value('rule_defaults', {})
             _class = self.get_rule_value(rule, 'class', 'default')
             r.update(defaults.get(_class, {}))
 
+            # update data from rule
             r.update(rule)
 
             if 'foreach' in r:
@@ -431,7 +439,7 @@ class Alerter:
             for data in data_set:
                 r.update(data)
 
-            log.debug("rule: %s", rule)
+            log.debug("rule: %s", r)
 
             for alert in rule['alerts']:
                 log.debug("process alert %s", alert)
@@ -444,6 +452,7 @@ class Alerter:
                 alert_rule.update(defaults.get(alert['type'],{}))
 
                 log.debug("alert_rule (defaults): %s", alert_rule)
+                alert_rule.update(r)
 
                 alert_rule.update(alert)
                 log.debug("alert_rule (alert): %s", alert_rule)
@@ -453,6 +462,9 @@ class Alerter:
                 else:
                     if 'key' not in alert_rule:
                         alert_rule['key'] = r['name']
+
+                visit_key = (alert_rule['key'], alert_rule['type'])
+                assert visit_key not in visited_keys, "key %s already used in rule %s" % (alert_rule['key'], r['name'])
 
                 assert 'match' in alert_rule or 'no_match' in alert_rule
 
@@ -475,8 +487,11 @@ class Alerter:
         alerter = Alerter(es, config)
         if sleep_seconds:
             while True:
-                alerter.process_rules()
-                time.sleep(sleep_seconds)
+                try:
+                    alerter.process_rules()
+                    time.sleep(sleep_seconds)
+                except Exception as e:
+                    log.error("exception occured while processing rules", exc_info=1)
         else:
             alerter.process_rules()
 
