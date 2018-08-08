@@ -1,6 +1,6 @@
 import yaml, io, pyaml, re
 from textwrap import dedent
-from elastico.util import PY3
+from elastico.util import PY3, to_dt
 if PY3:
     unicode = str
 
@@ -91,6 +91,188 @@ def test_alerter_alert(monkeypatch):
         }
     }
 
+def test_alerter_alert_elasticsearch(monkeypatch):
+    from elastico.alert import Alerter
+    from elastico.connection import elasticsearch
+    es = elasticsearch()
+
+    try:
+        alerter = Alerter(config=make_config("""
+            storage_type: elasticsearch
+            rules:
+                - name: test
+                  alerts:
+                  - type: warning
+                    match: x
+                  - type: fatal
+                    match: y
+        """), es_client=es)
+
+        def mock_matching_succeeds(rule):
+            if rule['match'] == 'x':
+                rule['match_hits_total'] = 4
+                rule['match_hit'] = {'foo': 'bar'}
+                rule['match_hits'] = True
+                return True
+            if rule['match'] == 'y':
+                rule['match_hits_total'] = 0
+                rule['match_hits'] = False
+                return False
+            return True
+
+        monkeypatch.setattr(alerter, 'do_match', mock_matching_succeeds)
+
+        alerter.process_rules()
+
+        status = {}
+        status['warning'] = alerter.read_status(key='test', type='warning')
+        status['fatal'] = alerter.read_status(key='test', type='fatal')
+
+        assert status == {
+            'fatal': {
+                'status': 'ok',
+                'match_hits': False,
+                'key': 'test',
+                'type': 'fatal',
+                'match': 'y',
+                'match_hits_total': 0
+            },
+            'warning': {
+                'status': 'alert',
+                'match_hit': {'foo': 'bar'},
+                'match_hits': True,
+                'key': 'test',
+                'type': 'warning',
+                'match': 'x',
+                'match_hits_total': 4
+            }
+        }
+    finally:
+        alerter.wipe_status_storage()
+
+def test_alerter_match():
+    from elastico.alert import Alerter
+    from elastico.connection import elasticsearch
+    from elasticsearch.helpers import bulk
+
+    es = elasticsearch()
+
+    index  = "test-alerter-match"
+    values = [ 20, 21, 19, 15, 12, 11, 4, 5, 6, 21, 22]
+
+    documents = [
+        {
+            "_index": index,
+            "_type": "doc",
+            "_id": i,
+            "value": v,
+            "@timestamp": to_dt("2018-05-05 10:%02d:00" % i),
+        } for i,v in enumerate(values)
+    ]
+
+    try:
+        bulk(es, documents)
+        es.indices.refresh(index)
+
+        alerter = Alerter(config = make_config("""
+            rules:
+                - name: value-check
+                  timeframe:
+                    minutes: 5
+                  alerts:
+                    - type: fatal
+                      match: "value:[0 TO 10]"
+                      index: test-alerter-match
+                    - type: warning
+                      match: "value:[10 TO 13]"
+                      index: test-alerter-match
+        """), es_client=es)
+
+        alerter.process_rules(runtime=to_dt("2018-05-05 10:02:00"))
+
+        assert alerter.STATUS == {
+            'fatal': {
+                'value-check': {
+                    'index': 'test-alerter-match',
+                    'key': 'value-check',
+                    'match': 'value:[0 TO 10]',
+                    'match_hits': False,
+                    'match_hits_total': 0,
+                    'status': 'ok',
+                    'type': 'fatal'
+                }
+            },
+            'warning': {
+                'value-check': {
+                    'index': 'test-alerter-match',
+                    'key': 'value-check',
+                    'match': 'value:[10 TO 13]',
+                    'match_hits': False,
+                    'match_hits_total': 0,
+                    'status': 'ok',
+                    'type': 'warning'
+                }
+            }
+        }
+
+        alerter.process_rules(runtime=to_dt("2018-05-05 10:07:00"))
+
+        import pprint
+        pprint.pprint(alerter.STATUS)
+
+
+        assert alerter.STATUS == {
+            'fatal': {
+                'value-check': {
+                    'index': 'test-alerter-match',
+                     'key': 'value-check',
+                     'match': 'value:[0 TO 10]',
+                     'match_hit': {
+                         '_id': '7',
+                         '_index': 'test-alerter-match',
+                         '_score': None,
+                         '_source': {
+                             '@timestamp': '2018-05-05T10:07:00',
+                             'value': 5
+                         },
+                         '_type': 'doc',
+                         'sort': [1525514820000]
+                     },
+
+                     'match_hits': True,
+                     'match_hits_total': 2,
+                     'status': 'alert',
+                     'type': 'fatal'
+                }
+            },
+            'warning': {
+                'value-check': {
+                    'index': 'test-alerter-match',
+                    'key': 'value-check',
+                    'match': 'value:[10 TO 13]',
+                    'match_hit': {
+                        '_id': '5',
+                        '_index': 'test-alerter-match',
+                        '_score': None,
+                        '_source': {
+                            '@timestamp': '2018-05-05T10:05:00',
+                            'value': 11
+                        },
+                        '_type': 'doc',
+                        'sort': [1525514700000]
+                    },
+                    'match_hits': True,
+                    'match_hits_total': 2,
+                    'status': 'alert',
+                    'type': 'warning'
+                }
+            }
+        }
+
+
+
+    finally:
+        es.indices.delete(index)
 
 def test_alerter_email(monkeypatch):
     from elastico.alert import Alerter
@@ -150,8 +332,13 @@ def test_alerter_email(monkeypatch):
 
     msg = re.sub('===============\d+==', '===============11111==', message)
 
-    assert msg == dedent("""\
-            Content-Type: multipart/alternative; boundary="===============11111=="
+    # python 2.7 compatibility
+    prefix = 'Content-Type: multipart/alternative; boundary="===============11111=="\n'
+    if not PY3:
+        prefix = ('Content-Type: multipart/alternative;\n'
+                  ' boundary="===============11111=="\n')
+
+    assert msg == prefix + dedent("""\
             MIME-Version: 1.0
             From: noreply
             Subject: [elastico] ALERT - hummhomm test
@@ -198,18 +385,3 @@ def test_alerter_email(monkeypatch):
          """)
 
 
-# def test_alert_email():
-#     alerter = Alerter(config=make_config("""
-#         rules:
-#             - name: test
-#               alerts:
-#               - type: warning
-#                 match: x
-#               - type: fatal
-#                 match: y
-#     """))
-#
-#     #monkeypatch.setattr(smtplib, 'sendmail',
-#
-# #def test_alerter_status_memory():
-#

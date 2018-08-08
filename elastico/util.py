@@ -5,6 +5,26 @@ if (sys.version_info > (3, 0)):
 else:
     PY3 = False
 
+from datetime import datetime
+from dateutil.parser import parse as dt_parse
+
+def dt_isoformat(dt, sep='T', timespec=None):
+    if PY3:
+        return dt.isoformat(sep, timespec)
+    else:
+        result = dt.isoformat(sep)
+        if timespec == 'hours':
+            return result.split(':')[0]
+        elif timespec == 'minutes':
+            return result.rsplit(':', 1)[0]
+        elif timespec == 'seconds':
+            if '.' in result:
+                return result.rsplit('.', 1)[0]
+        else:
+            raise Exception("timespec %s not supported", timespec)
+
+        return result
+
 def to_dt(x):
     if isinstance(x, datetime):
         return x

@@ -1,10 +1,10 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from dateutil.parser import parse as dt_parse
 
 import logging, sys, pyaml
 log = logging.getLogger('elastico.alert')
 
-from .util import to_dt, PY3
+from .util import to_dt, PY3, dt_isoformat
 
 if PY3:
     unicode = str
@@ -29,10 +29,28 @@ class Alerter:
         self.STATUS = {}
 
     def get_config_value(self, key, default=None):
-        return self.format_value(self.config, self.config.get(key, default))
+        key_parts = key.split('.')
+        result = self.format_value(self.config, self.config.get(key_parts[0], default))
+        for k in key_parts[1:]:
+            result = result[k]
+        return result
 
     def get_rule_value(self, rule, key, default=None):
-        return self.format_value(rule, rule.get(key, default))
+        key_parts = key.split('.')
+        result = self.format_value(rule, rule.get(key_parts[0], default))
+        for k in key_parts[1:]:
+            result = result[k]
+        return result
+
+    def wipe_status_storage(self):
+        '''remove all status storages'''
+        result = self.es.indices.delete('elastic-alert-*')
+        log.debug("wipe_status_storage: %s", result)
+        return result
+
+    def get_status_storage_index(self):
+        date = to_dt(self.get_config_value('arguments.rundate', datetime.utcnow()))
+        return date.strftime('elastico-alert-%Y-%m-%d')
 
     def write_status(self, rule):
         storage_type = self.get_config_value('status_storage', 'memory')
@@ -41,7 +59,8 @@ class Alerter:
         type = self.get_rule_value(rule, 'type')
 
         if storage_type == 'elasticsearch':
-            result = self.es.index(index=get_index, body=rule)
+            index = self.get_status_storage_index()
+            result = self.es.index(index=index, body=rule)
 
         elif storage_type == 'filesystem':
             storage_path = self.get_config_value('status_storage_path')
@@ -51,7 +70,7 @@ class Alerter:
                 pyaml.p(rule, dst=f)
 
             # for history
-            dt = datetime.utcnow().isoformat('_', 'seconds')
+            dt = dt_isoformat(datetime.utcnow(), '_', 'seconds')
             path = "{}/{}/{}-{}.yaml".format(storage_path, type, key, dt)
             with open(path, 'w') as f:
                 pyaml.p(rule, dst=f)
@@ -61,10 +80,13 @@ class Alerter:
                 self.STATUS[type] = {}
             self.STATUS[type][key] = rule
 
-    def read_status(self, rule):
+    def read_status(self, rule=None, key=None, type=None):
         storage_type = self.get_config_value('status_storage', 'memory')
-        key  = self.get_rule_value(rule, 'key')
-        type = self.get_rule_value(rule, 'type')
+
+        if key is None:
+            key  = self.get_rule_value(rule, 'key')
+        if type is None:
+            type = self.get_rule_value(rule, 'type')
 
         if storage_type == 'elasticsearch':
             results = self.es.search(index="elastico-alert-*", body={
@@ -245,7 +267,7 @@ class Alerter:
 
         # lucene query string
         if isinstance(query, string):
-            filters = [{'query': {'query_string': {'query': query}}}]
+            filters = [{'query_string': {'query': query}}]
 
         # complete search body (including timerange, if any)
         if isinstance(query, dict):
@@ -257,15 +279,19 @@ class Alerter:
         if 'endtime' in rule:
             endtime = to_dt(self.get_rule_value(rule, 'endtime'))
         else:
-            endtime = datetime.utcnow() #.isoformat('T', 'seconds')+"Z"
+            runtime = self.get_config_value("arguments.runtime")
+            if runtime:
+                endtime = to_dt(runtime)
+            else:
+                endtime = datetime.utcnow() #.isoformat('T', 'seconds')+"Z"
 
         if 'starttime' in rule:
             starttime = to_dt(self.get_rule_value(rule, 'starttime'))
         else:
-            starttime = endtime - datetime.timedelta(**timeframe)
+            starttime = endtime - timedelta(**timeframe)
 
-        starttime = starttime.isoformat('T', 'seconds')+"Z"
-        endtime   = endtime.isoformat('T', 'seconds')+"Z"
+        starttime = dt_isoformat(starttime, 'T', 'seconds')+"Z"
+        endtime   = dt_isoformat(endtime, 'T', 'seconds')+"Z"
 
         return {
             'query': {'bool': {'must': [
@@ -282,7 +308,8 @@ class Alerter:
         assert index, "index must be present in rule"
         results = self.es.search(index=index, body=body)
         rule['match_hits_total'] = results['hits']['total']
-        rule['match_hit'] = results['hits']['hits'][0]
+        if rule['match_hits_total']:
+            rule['match_hit'] = results['hits']['hits'][0]
         rule['match_hits'] = results['hits']['total'] > 0
 
         return rule['match_hits']
@@ -300,7 +327,7 @@ class Alerter:
 
         return rule['no_match_hits']
 
-    def check_alert(self, rule, status=None, do_match=None, do_no_match=None):
+    def check_alert(self, rule, status=None):
         if status is None:
             # get last status of this rule
             try:
@@ -316,16 +343,10 @@ class Alerter:
 
         need_alert = False
         if 'match' in rule:
-            if do_match:
-                need_alert = do_match(rule)
-            else:
-                need_alert = self.do_match(rule)
+            need_alert = self.do_match(rule)
 
         if 'no_match' in rule:
-            if do_no_match:
-                need_alert = need_alert or do_no_match(rule)
-            else:
-                need_alert = need_alert or self.do_no_match(rule)
+            need_alert = need_alert or self.do_no_match(rule)
 
         if need_alert:
             # new status = alert
@@ -369,7 +390,11 @@ class Alerter:
             log.debug("error formatting %s: %s", current, e)
             return current
 
-    def process_rules(self, config=None, action=None):
+    def process_rules(self, config=None, action=None, **arguments):
+        if 'arguments' not in self.config:
+            self.config['arguments'] = {}
+        self.config['arguments'].update(arguments)
+
         for rule in self.config.get('rules', []):
             self.process(rule, action=action)
 
@@ -391,6 +416,11 @@ class Alerter:
 
         for data_set in data_sets:
             r = self.get_config_value('arguments', {}).copy()
+
+            defaults = self.get_config_value('rule_defaults', {})
+            _class = self.get_rule_value(rule, 'class', 'default')
+            r.update(defaults.get(_class, {}))
+
             r.update(rule)
 
             if 'foreach' in r:
