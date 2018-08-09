@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from dateutil.parser import parse as dt_parse
 from itertools import product
 
-import logging, sys, pyaml
+import logging, sys, json, pyaml
 log = logging.getLogger('elastico.alert')
 
 from .util import to_dt, PY3, dt_isoformat
@@ -33,6 +33,9 @@ class Alerter:
         key_parts = key.split('.')
         result = self.format_value(self.config, self.config.get(key_parts[0], default))
         for k in key_parts[1:]:
+            if k not in result:
+                return default
+
             result = result[k]
         return result
 
@@ -40,41 +43,58 @@ class Alerter:
         key_parts = key.split('.')
         result = self.format_value(rule, rule.get(key_parts[0], default))
         for k in key_parts[1:]:
+            if k not in result:
+                return default
+
             result = result[k]
         return result
 
     def wipe_status_storage(self):
         '''remove all status storages'''
-        result = self.es.indices.delete('elastic-alert-*')
+        result = self.es.indices.delete('elastico-alert-*')
         log.debug("wipe_status_storage: %s", result)
         return result
 
     def get_status_storage_index(self):
-        date = to_dt(self.get_config_value('arguments.rundate', datetime.utcnow()))
+        now = to_dt(dt_isoformat(datetime.utcnow(), 'T', 'seconds'))
+        date = to_dt(self.get_config_value('arguments.run_at', now))
         return date.strftime('elastico-alert-%Y-%m-%d')
 
     def write_status(self, rule):
         storage_type = self.get_config_value('status_storage', 'memory')
+
+        now = to_dt(dt_isoformat(datetime.utcnow(), 'T', 'seconds'))
+        #rule['@timestamp'] = to_dt(self.get_rule_value(rule, 'run_at', now))
+        rule['@timestamp'] = timestamp = dt_isoformat(to_dt(self.get_config_value('arguments.run_at', now)))
+        if 'run_at' in rule:
+            rule['run_at'] = dt_isoformat(rule['run_at'])
+
+        log.debug("rule to write to status: %s", rule)
 
         key  = self.get_rule_value(rule, 'key')
         type = self.get_rule_value(rule, 'type')
 
         if storage_type == 'elasticsearch':
             index = self.get_status_storage_index()
-            result = self.es.index(index=index, body=rule)
+            result = self.es.index(index=index, doc_type="elastico_alert_status", body=rule)
+            self.es.indices.refresh(index)
+            log.debug("index result: %s", result)
 
         elif storage_type == 'filesystem':
-            storage_path = self.get_config_value('status_storage_path')
+            storage_path = self.get_config_value('status_storage_path', '')
             assert storage_path, "For status_storage 'filesystem' you must configure 'status_storage_path' "
-            path = "{}/{}/{}-latest.yaml".format(storage_path, type, key)
+
+            path = "{}/{}-{}-latest.yaml".format(storage_path, type, key)
+            path = "{}/{}-{}-latest.yaml".format(storage_path, type, key)
+
             with open(path, 'w') as f:
-                pyaml.p(rule, dst=f)
+                json.dump(rule, f)
 
             # for history
-            dt = dt_isoformat(datetime.utcnow(), '_', 'seconds')
-            path = "{}/{}/{}-{}.yaml".format(storage_path, type, key, dt)
+            dt = dt_isoformat(timestamp, '_', 'seconds')
+            path = "{}/{}-{}-{}.json".format(storage_path, type, key, dt)
             with open(path, 'w') as f:
-                pyaml.p(rule, dst=f)
+                json.dump(rule, f)
 
         elif storage_type == 'memory':
             if type not in self.STATUS:
@@ -100,16 +120,16 @@ class Alerter:
             })
 
             if results['hits']['total']:
-                return results['hits']['hits'][0]
+                return results['hits']['hits'][0]['_source']
             else:
                 return None
 
         elif storage_type == 'filesystem':
             storage_path = self.get_config_value('status_storage_path')
             assert storage_path, "For status_storage 'filesystem' you must configure 'status_storage_path' "
-            path = "{}/{}/{}-latest.yaml".format(storage_path, type, key)
+            path = "{}/{}-{}-latest.yaml".format(storage_path, type, key)
             with open(path, 'r') as f:
-                return yaml.load(f)
+                return json.load(f)
 
         elif storage_type == 'memory':
             return self.STATUS.get(type, {}).get(key)
@@ -280,9 +300,9 @@ class Alerter:
         if 'endtime' in rule:
             endtime = to_dt(self.get_rule_value(rule, 'endtime'))
         else:
-            runtime = self.get_config_value("arguments.runtime")
-            if runtime:
-                endtime = to_dt(runtime)
+            run_at = self.get_config_value("arguments.run_at")
+            if run_at:
+                endtime = to_dt(run_at)
             else:
                 endtime = datetime.utcnow() #.isoformat('T', 'seconds')+"Z"
 
@@ -291,8 +311,8 @@ class Alerter:
         else:
             starttime = endtime - timedelta(**timeframe)
 
-        starttime = dt_isoformat(starttime, 'T', 'seconds')+"Z"
-        endtime   = dt_isoformat(endtime, 'T', 'seconds')+"Z"
+        starttime = dt_isoformat(starttime, 'T', 'seconds')#+"Z"
+        endtime   = dt_isoformat(endtime, 'T', 'seconds')#+"Z"
 
         return {
             'query': {'bool': {'must': [

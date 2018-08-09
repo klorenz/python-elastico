@@ -1,4 +1,4 @@
-from .util import to_dt
+from .util import to_dt, dt_isoformat
 
 def search(es, query=None, index=None):
     return es.search(index=index or '*', body=build_query_body(query))
@@ -36,8 +36,8 @@ def build_search_body(config, name):
     else:
         starttime = endtime - datetime.timedelta(minutes=timeframe)
 
-    starttime = starttime.isoformat('T', 'seconds')+"Z"
-    endtime   = endtime.isoformat('T', 'seconds')+"Z"
+    starttime = dt_isoformat(starttime)
+    endtime   = dt_isoformat(endtime)
 
     return {
         'query': {'bool': {'must': [

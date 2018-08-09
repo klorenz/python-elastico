@@ -1,6 +1,8 @@
 import yaml, io, pyaml, re
 from textwrap import dedent
-from elastico.util import PY3, to_dt
+from elastico.util import PY3, to_dt, dt_isoformat
+from elastico.alert import Alerter
+
 if PY3:
     unicode = str
 
@@ -12,7 +14,6 @@ def test_alerter_expand_rules():
     import logging
     logging.getLogger().setLevel(logging.DEBUG)
 
-    from elastico.alert import Alerter
     config = make_config("""
         foo: bar
         alert_defaults:
@@ -42,7 +43,6 @@ def test_alerter_expand_rules_foreach():
     import logging
     logging.getLogger().setLevel(logging.DEBUG)
 
-    from elastico.alert import Alerter
     config = make_config("""
         foo: bar
         alert_defaults:
@@ -98,7 +98,6 @@ def test_alerter_expand_rules_foreach():
 
 
 def test_alerter_alert(monkeypatch):
-    from elastico.alert import Alerter
     alerter = Alerter(config=make_config("""
         rules:
             - name: test
@@ -123,12 +122,17 @@ def test_alerter_alert(monkeypatch):
 
     monkeypatch.setattr(alerter, 'do_match', mock_matching_succeeds)
 
-    alerter.process_rules()
+    run_at = to_dt("2018-05-05 10:07:00")
+    alerter.process_rules(run_at=run_at)
+
+    run_at_s = dt_isoformat(run_at)
 
     assert alerter.STATUS == {
         'fatal': {
             'test': {
                 'status': 'ok',
+                '@timestamp': run_at_s,
+                'run_at': run_at_s,
                 'match_hits': False,
                 'name': 'test',
                 'key': 'test',
@@ -140,6 +144,8 @@ def test_alerter_alert(monkeypatch):
         'warning': {
             'test': {
                 'name': 'test',
+                '@timestamp': run_at_s,
+                'run_at': run_at_s,
                 'status': 'alert',
                 'match_hit': {'foo': 'bar'},
                 'match_hits': True,
@@ -152,13 +158,12 @@ def test_alerter_alert(monkeypatch):
     }
 
 def test_alerter_alert_elasticsearch(monkeypatch):
-    from elastico.alert import Alerter
     from elastico.connection import elasticsearch
     es = elasticsearch()
 
     try:
         alerter = Alerter(config=make_config("""
-            storage_type: elasticsearch
+            status_storage: elasticsearch
             rules:
                 - name: test
                   alerts:
@@ -182,14 +187,19 @@ def test_alerter_alert_elasticsearch(monkeypatch):
 
         monkeypatch.setattr(alerter, 'do_match', mock_matching_succeeds)
 
-        alerter.process_rules()
+        run_at = to_dt("2018-05-05 10:02:00")
+        alerter.process_rules(run_at=run_at)
 
         status = {}
         status['warning'] = alerter.read_status(key='test', type='warning')
         status['fatal'] = alerter.read_status(key='test', type='fatal')
 
+        run_at_s = dt_isoformat(run_at)
+
         assert status == {
             'fatal': {
+                '@timestamp': run_at_s,
+                'run_at': run_at_s,
                 'name': 'test',
                 'status': 'ok',
                 'match_hits': False,
@@ -199,6 +209,76 @@ def test_alerter_alert_elasticsearch(monkeypatch):
                 'match_hits_total': 0
             },
             'warning': {
+                '@timestamp': run_at_s,
+                'run_at': run_at_s,
+                'name': 'test',
+                'status': 'alert',
+                'match_hit': {'foo': 'bar'},
+                'match_hits': True,
+                'key': 'test',
+                'type': 'warning',
+                'match': 'x',
+                'match_hits_total': 4
+            }
+        }
+    finally:
+        alerter.wipe_status_storage()
+
+def test_alerter_alert_filesystem(monkeypatch, tmpdir):
+    from elastico.connection import elasticsearch
+    es = elasticsearch()
+
+    try:
+        alerter = Alerter(config=make_config("""
+            status_storage: filesystem
+            status_storage_path: %s
+            rules:
+                - name: test
+                  alerts:
+                  - type: warning
+                    match: x
+                  - type: fatal
+                    match: y
+        """ % tmpdir.strpath), es_client=es)
+
+        def mock_matching_succeeds(rule):
+            if rule['match'] == 'x':
+                rule['match_hits_total'] = 4
+                rule['match_hit'] = {'foo': 'bar'}
+                rule['match_hits'] = True
+                return True
+            if rule['match'] == 'y':
+                rule['match_hits_total'] = 0
+                rule['match_hits'] = False
+                return False
+            return True
+
+        monkeypatch.setattr(alerter, 'do_match', mock_matching_succeeds)
+
+        run_at = to_dt("2018-05-05 10:02:00")
+        alerter.process_rules(run_at=run_at)
+
+        status = {}
+        status['warning'] = alerter.read_status(key='test', type='warning')
+        status['fatal'] = alerter.read_status(key='test', type='fatal')
+
+        run_at_s = dt_isoformat(run_at)
+
+        assert status == {
+            'fatal': {
+                '@timestamp': run_at_s,
+                'run_at': run_at_s,
+                'name': 'test',
+                'status': 'ok',
+                'match_hits': False,
+                'key': 'test',
+                'type': 'fatal',
+                'match': 'y',
+                'match_hits_total': 0
+            },
+            'warning': {
+                '@timestamp': run_at_s,
+                'run_at': run_at_s,
                 'name': 'test',
                 'status': 'alert',
                 'match_hit': {'foo': 'bar'},
@@ -213,7 +293,6 @@ def test_alerter_alert_elasticsearch(monkeypatch):
         alerter.wipe_status_storage()
 
 def test_alerter_match():
-    from elastico.alert import Alerter
     from elastico.connection import elasticsearch
     from elasticsearch.helpers import bulk
 
@@ -221,6 +300,7 @@ def test_alerter_match():
 
     index  = "test-alerter-match"
     values = [ 20, 21, 19, 15, 12, 11, 4, 5, 6, 21, 22]
+
 
     documents = [
         {
@@ -237,6 +317,8 @@ def test_alerter_match():
         es.indices.refresh(index)
 
         alerter = Alerter(config = make_config("""
+            arguments:
+                run_at:
             rules:
                 - name: value-check
                   timeframe:
@@ -250,15 +332,17 @@ def test_alerter_match():
                       index: test-alerter-match
         """), es_client=es)
 
-        runtime = to_dt("2018-05-05 10:02:00")
+        run_at = to_dt("2018-05-05 10:02:00")
+        alerter.process_rules(run_at=run_at)
 
-        alerter.process_rules(runtime=runtime)
+        run_at_s = dt_isoformat(run_at)
 
         assert alerter.STATUS == {
             'fatal': {
                 'value-check': {
                     'name': 'value-check',
-                    'runtime': runtime,
+                    '@timestamp': run_at_s,
+                    'run_at': run_at_s,
                     'timeframe':{'minutes': 5},
                     'index': 'test-alerter-match',
                     'key': 'value-check',
@@ -272,7 +356,8 @@ def test_alerter_match():
             'warning': {
                 'value-check': {
                     'name': 'value-check',
-                    'runtime': runtime,
+                    '@timestamp': run_at_s,
+                    'run_at': run_at_s,
                     'timeframe':{'minutes': 5},
                     'index': 'test-alerter-match',
                     'key': 'value-check',
@@ -285,18 +370,16 @@ def test_alerter_match():
             }
         }
 
-        runtime = to_dt("2018-05-05 10:07:00")
-        alerter.process_rules(runtime=runtime)
-
-        import pprint
-        pprint.pprint(alerter.STATUS)
-
+        run_at = to_dt("2018-05-05 10:07:00")
+        alerter.process_rules(run_at=run_at)
+        run_at_s = dt_isoformat(run_at)
 
         assert alerter.STATUS == {
             'fatal': {
                 'value-check': {
                     'name': 'value-check',
-                    'runtime': runtime,
+                    '@timestamp': run_at_s,
+                    'run_at': run_at_s,
                     'timeframe':{'minutes': 5},
                     'index': 'test-alerter-match',
                      'key': 'value-check',
@@ -322,7 +405,8 @@ def test_alerter_match():
             'warning': {
                 'value-check': {
                     'name': 'value-check',
-                    'runtime': runtime,
+                    '@timestamp': run_at_s,
+                    'run_at': run_at_s,
                     'timeframe':{'minutes': 5},
                     'index': 'test-alerter-match',
                     'key': 'value-check',
@@ -352,7 +436,6 @@ def test_alerter_match():
         es.indices.delete(index)
 
 def test_alerter_email(monkeypatch):
-    from elastico.alert import Alerter
     alerter = Alerter(config=make_config("""
         alert_defaults:
             hummhomm:
@@ -392,7 +475,9 @@ def test_alerter_email(monkeypatch):
         mock_args['sendmail'] = kwargs
 
     monkeypatch.setattr(alerter, 'email_sendmail', mock_sendmail)
-    alerter.process_rules()
+
+    run_at = to_dt("2018-05-05 10:07:00")
+    alerter.process_rules(run_at=run_at)
 
     message = mock_args['sendmail']['message']
     del mock_args['sendmail']['message']
@@ -438,6 +523,7 @@ def test_alerter_email(monkeypatch):
                 notify:
                   - email_to: treebeard@middle.earth
                     transport: email
+                run_at: 2018-05-05 10:07:00
                 status: alert
                 type: hummhomm
 
@@ -457,10 +543,15 @@ def test_alerter_email(monkeypatch):
             notify:
               - email_to: treebeard@middle.earth
                 transport: email
+            run_at: 2018-05-05 10:07:00
             status: alert
             type: hummhomm
             </code></pre>
             --===============11111==--
          """)
 
+def test_get_rule_value():
+    alerter = Alerter()
+    rule = {'foo': {'bar': 'value'}}
+    assert alerter.get_rule_value(rule, "foo.bar") == 'value'
 

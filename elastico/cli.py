@@ -89,8 +89,8 @@ def install():
 #
 
 
-@command('search'
-    arg('--host', '-h', help="url to elasticsearch host, default http://localhost:9200", default=None),
+@command('search',
+    arg('--host', '-H', help="url to elasticsearch host, default http://localhost:9200", default=None),
     arg('--format', '-F', help="format string, which is applied to each match", default=None),
     arg('query', help="may be a query, a filename or '-' to read from stdin"),
 )
@@ -102,6 +102,7 @@ def search(host, format, query):
         with open(query, 'r') as f:
             content = f.read()
     else:
+        config = {}
         config['query'] = query
         config['format'] = format
 
