@@ -16,20 +16,21 @@ def test_alerter_expand_rules():
 
     config = make_config("""
         foo: bar
-        alert_defaults:
-            honey:
-                a: a_value
-            boney:
-                b: '{foo}'
+        alert:
+            defaults:
+                honey:
+                    a: a_value
+                boney:
+                    b: '{foo}'
 
-        rules:
-          - name: foo
-            index: an_index
-            alerts:
-            - type: honey
-              match: x
-            - type: boney
-              match: y
+            rules:
+              - name: foo
+                index: an_index
+                alerts:
+                - type: honey
+                  match: x
+                - type: boney
+                  match: y
     """)
 
     data = [x for x in Alerter.expand_rules(config)]
@@ -45,30 +46,31 @@ def test_alerter_expand_rules_foreach():
 
     config = make_config("""
         foo: bar
-        alert_defaults:
-            honey:
-                a: a_value
-            boney:
-                b: '{foo}'
+        alert:
+            defaults:
+                honey:
+                    a: a_value
+                boney:
+                    b: '{foo}'
 
-        rules:
-          - name: foo
-            foreach:
-                host:
-                    - foo
-                    - bar
-                mount_point:
-                    - x
-                    - y
-            index: an_index
-            alerts:
-            - type: honey
-              key: '{name}-{host}-{mount_point}'
-              match: x
+            rules:
+              - name: foo
+                foreach:
+                    host:
+                        - foo
+                        - bar
+                    mount_point:
+                        - x
+                        - y
+                index: an_index
+                alerts:
+                - type: honey
+                  key: '{name}-{host}-{mount_point}'
+                  match: x
 
-            - type: boney
-              key: '{name}-{host}-{mount_point}'
-              match: y
+                - type: boney
+                  key: '{name}-{host}-{mount_point}'
+                  match: y
     """)
 
     data = [x for x in Alerter.expand_rules(config)]
@@ -99,13 +101,14 @@ def test_alerter_expand_rules_foreach():
 
 def test_alerter_alert(monkeypatch):
     alerter = Alerter(config=make_config("""
-        rules:
-            - name: test
-              alerts:
-              - type: warning
-                match: x
-              - type: fatal
-                match: y
+        alert:
+            rules:
+                - name: test
+                  alerts:
+                  - type: warning
+                    match: x
+                  - type: fatal
+                    match: y
     """))
 
     def mock_matching_succeeds(rule):
@@ -164,13 +167,14 @@ def test_alerter_alert_elasticsearch(monkeypatch):
     try:
         alerter = Alerter(config=make_config("""
             status_storage: elasticsearch
-            rules:
-                - name: test
-                  alerts:
-                  - type: warning
-                    match: x
-                  - type: fatal
-                    match: y
+            alert:
+                rules:
+                    - name: test
+                      alerts:
+                      - type: warning
+                        match: x
+                      - type: fatal
+                        match: y
         """), es_client=es)
 
         def mock_matching_succeeds(rule):
@@ -232,13 +236,14 @@ def test_alerter_alert_filesystem(monkeypatch, tmpdir):
         alerter = Alerter(config=make_config("""
             status_storage: filesystem
             status_storage_path: %s
-            rules:
-                - name: test
-                  alerts:
-                  - type: warning
-                    match: x
-                  - type: fatal
-                    match: y
+            alert:
+                rules:
+                    - name: test
+                      alerts:
+                      - type: warning
+                        match: x
+                      - type: fatal
+                        match: y
         """ % tmpdir.strpath), es_client=es)
 
         def mock_matching_succeeds(rule):
@@ -301,7 +306,6 @@ def test_alerter_match():
     index  = "test-alerter-match"
     values = [ 20, 21, 19, 15, 12, 11, 4, 5, 6, 21, 22]
 
-
     documents = [
         {
             "_index": index,
@@ -319,17 +323,18 @@ def test_alerter_match():
         alerter = Alerter(config = make_config("""
             arguments:
                 run_at:
-            rules:
-                - name: value-check
-                  timeframe:
-                    minutes: 5
-                  alerts:
-                    - type: fatal
-                      match: "value:[0 TO 10]"
-                      index: test-alerter-match
-                    - type: warning
-                      match: "value:[10 TO 13]"
-                      index: test-alerter-match
+            alert:
+                rules:
+                    - name: value-check
+                      timeframe:
+                        minutes: 5
+                      alerts:
+                        - type: fatal
+                          match: "value:[0 TO 10]"
+                          index: test-alerter-match
+                        - type: warning
+                          match: "value:[10 TO 13]"
+                          index: test-alerter-match
         """), es_client=es)
 
         run_at = to_dt("2018-05-05 10:02:00")
@@ -437,19 +442,20 @@ def test_alerter_match():
 
 def test_alerter_email(monkeypatch):
     alerter = Alerter(config=make_config("""
-        alert_defaults:
-            hummhomm:
-                notify:
-                - transport: email
-                  email_to: treebeard@middle.earth
+        alert:
+            defaults:
+                hummhomm:
+                    notify:
+                    - transport: email
+                      email_to: treebeard@middle.earth
 
-        rules:
-            - name: test
-              alerts:
-              - type: hummhomm
-                match: x
-              - type: fatal
-                match: y
+            rules:
+                - name: test
+                  alerts:
+                  - type: hummhomm
+                    match: x
+                  - type: fatal
+                    match: y
     """))
 
     def mock_matching_succeeds(rule):

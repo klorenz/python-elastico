@@ -6,6 +6,7 @@ from zipfile import ZipFile, ZipInfo
 
 from .connection import elasticsearch
 from .search import build_search_body
+from .config_factory import ConfigFactory
 
 import logging
 logger = logging.getLogger('elastico.cli')
@@ -25,7 +26,7 @@ class MyZipFile(ZipFile):
         return ret_val
 
 @command('install')
-def install():
+def install(config):
     '''install elasticsearch from zip right here, mostly used for testing'''
 
     package = "elasticsearch"
@@ -94,7 +95,10 @@ def install():
     arg('--format', '-F', help="format string, which is applied to each match", default=None),
     arg('query', help="may be a query, a filename or '-' to read from stdin"),
 )
-def search(host, format, query):
+def search(config): #host, format, query):
+    host = config.get('host')
+    format = config.get('format')
+    query = config.get('query')
     content = None
     if query == '-':
         content = sys.stdin.read()
@@ -150,9 +154,12 @@ def search(host, format, query):
 from .alert import Alerter
 
 alert_command = command.add_subcommands('alert',)
-arg_config = arg('config', help="configuration file or '-' to read from stdin")
+arg_config = arg('config', help="configuration file or '-' to read from stdin", default=None)
 
 def read_config(config):
+    if not config:
+        return {}
+
     if config == '-':
         config = yaml.load(sys.stdin)
     elif exists(config):
@@ -165,13 +172,7 @@ def read_config(config):
 
     if path:
         path = path.format(**config)
-
-        if exists(path):
-            for root, dirs, files in os.walk(path):
-                for name in files:
-                    with open(join(root, name), 'r') as f:
-                        for _rule in yaml.load_all(f):
-                            config['rules'].append(_rule)
+        read_config_dir(path.format(**config), config, 'rules')
 
     config['arguments'] = {}
     return config
@@ -182,9 +183,11 @@ alert_command("expand_rules",
     description = Alerter.expand_rules.__doc__
     )
 def cmd_alert_expand_rules(config):
-    config = read_config(config)
+    config_factory = ConfigFactory(config)
 
-    for r in Alerter.expand_rules(config):
+#    config = read_config(config)
+
+    for r in Alerter.expand_rules(config_factory):
         print("---")
         pyaml.p(r)
 
@@ -194,11 +197,108 @@ alert_command("run",
     arg_config,
     description = Alerter.run.__doc__
     )
-def cmd_alert_run(dry_run, config):
+def cmd_alert_run(config):
+    cfg = read_config(config['config'])
+    cfg['arguments'] = config
+    Alerter.run(cfg)
+
+digest_command = command.add_subcommands('digest',)
+
+'''idea of digest commands is to analyse and do digestions.
+
+Here an example for aggregating filesystem metricset of metric beat:
+
+Configuration:
+```yaml
+# for each index matching index pattern
+retentions:
+- index-pattern: metricbeat-*
+
+  target: history-metricbeat-%Y-%m
+
+  digest:
+  - name: metricset-filesystem
+
+    fields:
+        metricset.module: "system"
+        metricset.name: "filesystem"
+
+    buckets:
+        terms:
+            tags:        tags
+            host_name:   host.name
+            mount_point: system.filesystem.mount_point
+
+    aggregate:
+        terms:
+            metricset.name:   metricset.name
+            metricset.module: metricset.module
+        stats:
+            available:  system.filesystem.available
+            free:       system.filesystem.free
+            total:      system.filesystem.total
+            available:  system.filesystem.available
+            used_pct:   system.filesystem.used.pct
+            used_bytes: system.filesystem.used.bytes
+
+  - name: metricset-network
+
+      fields:
+        metricset.module: "system"
+        metricset.name: "filesystem"
+
+      buckets:
+        terms:
+          - host.name
+          - system.network.name
+
+      aggregate:
+        terms:
+            - tags
+        stats:
+            - system.network.in.bytes
+            - system.network.in.dropped
+            - system.network.in.errors
+            - system.network.in.packats
+
+            - system.network.out.bytes
+            - system.network.out.dropped
+            - system.network.out.errors
+            - system.network.out.packats
+```
+
+```json
+```
+
+'''
+arg_config = arg('--config', '-c', help="configuration file or '-' to read from stdin", default=None)
+
+digest_command('query',
+    arg_config,
+    arg('--run-at', help="simulate running this program at given time")
+    arg('--starttime', help="start date")
+    arg('--endtime', help="end date")
+    arg('name', help="name of the digestion to run the query for")
+)
+def cmd_query(config):
+    from digest import Digester
+    Digester.run_query(config)
+
+
+digest_command('collect', arg_config,
+    arg('--starttime', help="start date")
+    arg('--endtime', help="end date")
+    arg('--period', help="length of period (possible: 10s, 10m, 10h)")
+)
+def cmd_collect(config): #, starttime, endtime, period):
     config = read_config(config)
+    config['arguments'] = {}
+    if starttime:
+        config['arguments']['starttime'] = starttime
 
-    if dry_run:
-        config['arguments']['dry_run'] = True
-    Alerter.run(config)
+    if endtime:
+        config['arguments']['endtime'] = endtime
 
+
+####
 

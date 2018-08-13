@@ -5,7 +5,7 @@ from itertools import product
 import logging, sys, json, pyaml
 log = logging.getLogger('elastico.alert')
 
-from .util import to_dt, PY3, dt_isoformat
+from .util import to_dt, PY3, dt_isoformat, format_value, get_config_value
 
 if PY3:
     unicode = str
@@ -18,6 +18,60 @@ def indent(indent, s):
         indent = " "*indent
     return "".join([ indent+line for line in s.splitlines(1) ])
 
+# class NewAlerter(DataProcessor):
+#
+#     def wipe_status_storage(self):
+#         '''remove all status storages'''
+#         result = self.es_client.indices.delete('elastico-alert-*')
+#         log.debug("wipe_status_storage: %s", result)
+#         return result
+#
+#     def get_status_storage_index(self):
+#         now = to_dt(dt_isoformat(datetime.utcnow(), 'T', 'seconds'))
+#         date = to_dt(self.config.get('arguments.run_at', now))
+#         return date.strftime('elastico-alert-%Y-%m-%d')
+#
+#     def write_status(self, rule):
+#         storage_type = self.config.get('status_storage', 'memory')
+#
+#         now = to_dt(dt_isoformat(datetime.utcnow(), 'T', 'seconds'))
+#         #rule['@timestamp'] = to_dt(self.get_rule_value(rule, 'run_at', now))
+#         rule['@timestamp'] = timestamp = dt_isoformat(to_dt(self.config.get('arguments.run_at', now)))
+#         if 'run_at' in rule:
+#             rule['run_at'] = dt_isoformat(rule['run_at'])
+#
+#         log.debug("rule to write to status: %s", rule)
+#
+#         key  = rule.get('key')
+#         type = rule.get('type')
+#
+#         if storage_type == 'elasticsearch':
+#             index = self.get_status_storage_index()
+#             result = self.es_client.index(index=index, doc_type="elastico_alert_status", body=rule.dict())
+#             self.es.indices.refresh(index)
+#             log.debug("index result: %s", result)
+#
+#         elif storage_type == 'filesystem':
+#             storage_path = self.get_config_value('status_storage_path', '')
+#             assert storage_path, "For status_storage 'filesystem' you must configure 'status_storage_path' "
+#
+#             path = "{}/{}-{}-latest.yaml".format(storage_path, type, key)
+#             path = "{}/{}-{}-latest.yaml".format(storage_path, type, key)
+#
+#             with open(path, 'w') as f:
+#                 json.dump(rule, f)
+#
+#             # for history
+#             dt = dt_isoformat(timestamp, '_', 'seconds')
+#             path = "{}/{}-{}-{}.json".format(storage_path, type, key, dt)
+#             with open(path, 'w') as f:
+#                 json.dump(rule, f)
+#
+#         elif storage_type == 'memory':
+#             if type not in self.STATUS:
+#                 self.STATUS[type] = {}
+#             self.STATUS[type][key] = rule
+#
 class Alerter:
     '''alerter alerts.
 
@@ -30,24 +84,10 @@ class Alerter:
         self.STATUS = {}
 
     def get_config_value(self, key, default=None):
-        key_parts = key.split('.')
-        result = self.format_value(self.config, self.config.get(key_parts[0], default))
-        for k in key_parts[1:]:
-            if k not in result:
-                return default
-
-            result = result[k]
-        return result
+        return get_config_value(self.config, key, default)
 
     def get_rule_value(self, rule, key, default=None):
-        key_parts = key.split('.')
-        result = self.format_value(rule, rule.get(key_parts[0], default))
-        for k in key_parts[1:]:
-            if k not in result:
-                return default
-
-            result = result[k]
-        return result
+        return get_config_value(rule, key, default)
 
     def wipe_status_storage(self):
         '''remove all status storages'''
@@ -391,32 +431,13 @@ class Alerter:
 
         return rule
 
-
-    def format_value(self, rule, current=None):
-        try:
-            if current is None:
-                current = rule
-            if isinstance(current, string):
-                return current.format(**rule)
-            if isinstance(current, (list, tuple)):
-                return [self.format_value(rule, v) for v in current]
-            if isinstance(current, dict):
-                result = {}
-                for k,v in current.items():
-                    result[k] = self.format_value(rule, v)
-                return result
-            else:
-                return current
-        except Exception as e:
-            log.debug("error formatting %s: %s", current, e)
-            return current
-
-    def process_rules(self, config=None, action=None, **arguments):
+    def process_rules(self, config={}, action=None, **arguments):
         if 'arguments' not in self.config:
             self.config['arguments'] = {}
+
         self.config['arguments'].update(arguments)
 
-        for rule in self.config.get('rules', []):
+        for rule in self.get_config_value('alert.rules', []):
             self.process(rule, action=action)
 
     def process(self, rule, action=None):
@@ -466,7 +487,7 @@ class Alerter:
 
                 alert_rule = {}
 
-                defaults = self.get_config_value('alert_defaults', {})
+                defaults = self.get_config_value('alert.defaults', {})
                 log.debug("defaults: %s", defaults)
 
                 alert_rule.update(defaults.get(alert['type'],{}))
@@ -524,9 +545,11 @@ class Alerter:
             RULES.append(rule)
             return rule
 
-        from .connection import elasticsearch
-        es = elasticsearch(config)
-        Alerter(es, config).process_rules(config, action=collect_rules)
-        return RULES
+        #from .connection import elasticsearch
+        #es = elasticsearch(config)
+        Alerter(None, config).process_rules(config, action=collect_rules)
+        #config = config_factory(create)
 
+        #Alerter(config=config).process_rules(action=collect_rules)
+        return RULES
 
