@@ -51,6 +51,7 @@ class ConfigFactory:
 
         if hasattr(self, 'config_file'):
             config.include_file(self.config_file)
+            config.set_filename(self.config_file)
 
         config['arguments'] = kwargs
 

@@ -7,12 +7,35 @@ log = logging.getLogger('elastico.config')
 from .util import string
 
 class Config(dict):
+    @classmethod
+    def object(cls, value, file=None):
+        cfg = cls(value)
+        cfg.set_filename(file)
+        return cfg
+
+    def set_filename(self, filename):
+        if filename is not None:
+            self._file = filename
+            self._dir = dirname(filename)
+
     def __contains__(self, name):
         try:
             self[name]
             return True
         except KeyError:
             return False
+
+    def __getattr__(self, name):
+        if name == '_dir':
+            self._dir = '.'
+            return self._dir
+        if name == '_file':
+            self._file = '-'
+            return self._file
+        if name == '_files':
+            self._files = []
+            return self._files
+        raise AttributeError(name)
 
     def __getitem__(self, name):
         key_parts = name.split('.')
@@ -38,7 +61,7 @@ class Config(dict):
         return result
 
     def update_from_includes(self):
-        log.debug("update_from_includes starts: %s", self.get('_file_', '-'))
+        log.debug("update_from_includes starts: %s", self._file)
         for item in self.get('include', []):
             log.debug("update_from_includes item: %s", item)
             if isinstance(item, string):
@@ -65,8 +88,8 @@ class Config(dict):
         return self
 
     def include_file(self, path, name=None, action='update', auto_include=True):
-        log.debug("include_file: path=%s, name=%s, action=%s", path, name, action)
-        _dir = self.get('_dir_', '.')
+        _dir = self._dir
+        log.debug("include_file: path=%s, name=%s, action=%s, _dir=%s", path, name, action, _dir)
 
         if name is not None:
             if name not in self:
@@ -74,16 +97,18 @@ class Config(dict):
                     self[name] = {}
                 elif action == 'append':
                     self[name] = []
-            else:
-                if isinstance(self[name], dict):
-                    _dir = self[name].get('_dir_', _dir)
+
+            if isinstance(self[name], dict) and not isinstance(self[name], Config):
+                self[name] = Config.object(self[name], file=self._file)
+            if hasattr(self[name], '_dir'):
+                _dir = self[name]._dir
         else:
             assert action != 'append', "append requires a config item name"
 
-        if action == 'update':
-            if name is not None:
-                _file = self[name].get('_file_')
-                _dir  = self[name].get('_dir_')
+        # if action == 'update':
+        #     if name is not None:
+        #         _file = self[name].get('_file_')
+        #         _dir  = self[name].get('_dir_')
 
         if not isabs(path):
             path = join(_dir, path)
@@ -92,47 +117,46 @@ class Config(dict):
 
         with open(path, 'r') as f:
             for _doc in yaml.load_all(f):
-                _doc['_file_'] = path
-                _doc['_dir_'] = dirname(path)
+                _doc = Config.object(_doc, file=path)
 
                 if auto_include:
-                    _doc = Config(_doc)
                     _doc.update_from_includes()
 
                 if name is not None:
                     getattr(self[name], action)(_doc)
 
                     if action == 'update':
+                        self[name]._files.append(path)
+
                         # restore _file_ and _dir_
-                        if _file is not None:
-                            self[name]['_file_'] = _file
-                            self[name]['_dir_'] = _dir
-
-                        if '_files_' not in self[name]:
-                            self[name]['_files_'] = []
-                            if _file:
-                                self[name]['_files_'].append(_file)
-
-                        self[name]['_files_'].append(path)
-
-                    #    if '_files_' in _doc:
-                    #        self[name]['_files_'] += _doc['_files_']
+                        # if _file is not None:
+                        #     self[name]['_file_'] = _file
+                        #     self[name]['_dir_'] = _dir
+                        #
+                        # if '_files_' not in self[name]:
+                        #     self[name]['_files_'] = []
+                        #     if _file:
+                        #         self[name]['_files_'].append(_file)
+                        #
+                        # self[name]['_files_'].append(path)
+                        #
                 else:
-                    _file = self.get('_file_')
-                    _dir  = self.get('_dir_')
+                    # _file = self.get('_file_')
+                    # _dir  = self.get('_dir_')
 
                     self.update(_doc)
+                    self._files.append(path)
 
-                    if _file is not None:
-                        self['_file_'] = _file
-                        self['_dir_'] = _dir
-
-                    if '_files_' not in self:
-                        self['_files_'] = []
-                        if _file:
-                            self['_files_'].append(_file)
-
-                    self['_files_'].append(path)
+                    # if _file is not None:
+                    #     self['_file_'] = _file
+                    #     self['_dir_'] = _dir
+                    #
+                    # if '_files_' not in self:
+                    #     self['_files_'] = []
+                    #     if _file:
+                    #         self['_files_'].append(_file)
+                    #
+                    # self['_files_'].append(path)
 
                     #if '_files_' in _doc:
                     #    self['_files_'] += _doc['_files_']
@@ -147,13 +171,15 @@ class Config(dict):
         documents (also multidocument YAML files) and append to configuration list
         named `name`.
         '''
-        log.debug("update_from_dir:: path=%s, name=%s, action=%s, recursive=%s", path, name, action, recursive)
-
-        _dir = self.get('_dir_', '.')
+        _dir = self._dir
+        log.debug("update_from_dir:: path=%s, name=%s, action=%s, recursive=%s, _dir=%s", path, name, action, recursive, _dir)
 
         if action == 'update':
             if name is not None:
-                _dir  = self[name].get('_dir_', _dir)
+                if not isinstance(self[name], Config):
+                    self[name] = Config.object(self[name], file=self._file)
+                if hasattr(self[name], '_dir'):
+                    _dir = self[name]._dir
 
         if not isabs(path):
             path = join(_dir, path)
