@@ -97,19 +97,20 @@ def test_config_includes(tmpdir):
         item3: value3
     '''))
     d2 = tmpdir.mkdir('d2')
-    f7 = d2.mkdir('d3').join('d3_file.yml').write(dedent('''
+    d3_file = d2.mkdir('d3').join('d3_file.yml')
+    d3_file.write(dedent('''
         item5: value5
     '''))
 
-    f5 = d2.join('d2_2.yml')
-    f5.write(dedent('''
+    d2_2 = d2.join('d2_2.yml')
+    d2_2.write(dedent('''
         item1: value1
         include:
         - d3/d3_file.yml
     '''))
 
-    f6 = d2.join('d2_1.yml')
-    f6.write(dedent('''
+    d2_1 = d2.join('d2_1.yml')
+    d2_1.write(dedent('''
         item1: value2
         k1: value1
     '''))
@@ -118,6 +119,10 @@ def test_config_includes(tmpdir):
     config = config_factory.create(arg1='val1')
     assert config._dir == dirname(f1.strpath)
     assert config._file == f1.strpath
+
+    expected_files = set([d2_1.strpath, d2_2.strpath, d3_file.strpath])
+    assert config['d2_item']._files == expected_files
+
 
     assert config == {'a1': 'b1',
          'a2': 'some_other_value',

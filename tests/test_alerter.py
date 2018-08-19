@@ -317,8 +317,10 @@ def test_alerter_match():
     ]
 
     try:
-        bulk(es, documents)
+        success, failed = bulk(es, documents)
+        assert len(failed) == 0, "error bulk importing test data"
         es.indices.refresh(index)
+        assert False
 
         alerter = Alerter(config = make_config("""
             arguments:

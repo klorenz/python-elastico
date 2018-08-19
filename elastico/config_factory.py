@@ -4,6 +4,7 @@
 from .config import Config
 import yaml, copy
 
+from argdeco import ConfigDict
 from os.path import exists, join
 
 class ConfigFactory:
@@ -36,7 +37,16 @@ class ConfigFactory:
             self.config = {}
             self.config_file = source
 
-    #def upd
+        self.arg_config = ConfigDict()
+
+    def load_from_file(self, file_name):
+        self.config_file = file_name
+
+    def __setitem__(self, name, value):
+        self.arg_config[name] = value
+
+    # def update(self, *args, **kwargs):
+    #     self.config.update(*args, **kwargs)
 
     def create(self, **kwargs):
         """Produce a new :class:`Config` object.
@@ -53,7 +63,17 @@ class ConfigFactory:
             config.include_file(self.config_file)
             config.set_filename(self.config_file)
 
+        # #_action, _args, _kwargs = main.command.compile_args()
+        #
+        # action = main.command.get_action(name)
+            #
+        # for k,v in kwargs:
+        #     main.command.get_config_name(action, v)
+
+        #config['arguments'] = self.arg_config
+
+        #config.update(self.arg_config)
+
         config['arguments'] = kwargs
 
         return config
-

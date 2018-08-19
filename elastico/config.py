@@ -6,24 +6,25 @@ log = logging.getLogger('elastico.config')
 
 from .util import string
 
-class Config(dict):
+from argdeco import ConfigDict
+
+class Config(ConfigDict):
     @classmethod
     def object(cls, value, file=None):
         cfg = cls(value)
         cfg.set_filename(file)
         return cfg
 
+    def get_filename(self, *configs):
+        for config in configs:
+            if hasattr(config, '_file'):
+                return config
+        return self._file
+
     def set_filename(self, filename):
         if filename is not None:
             self._file = filename
             self._dir = dirname(filename)
-
-    def __contains__(self, name):
-        try:
-            self[name]
-            return True
-        except KeyError:
-            return False
 
     def __getattr__(self, name):
         if name == '_dir':
@@ -33,20 +34,34 @@ class Config(dict):
             self._file = '-'
             return self._file
         if name == '_files':
-            self._files = []
+            self._files = set()
             return self._files
         raise AttributeError(name)
 
     def __getitem__(self, name):
-        key_parts = name.split('.')
-        value = super(Config, self).__getitem__(key_parts[0])
-        for k in key_parts[1:]:
-            value = value[k]
-        return value
+        try:
+            arguments = super(Config, self).__getitem__('arguments')
+        except KeyError:
+            if name == 'arguments': raise
+            arguments = {}
+
+        if name == 'arguments':
+            return arguments
+
+        try:
+            return arguments[name]
+        except KeyError:
+            return super(Config, self).__getitem__(name)
+
+    # def __setitem__(self, name):
+    #     arguments = super(Config, self).__getitem__(self, 'arguments')
+    #     if name in argumetns
+#        f
+
 
     def get(self, name, default=None):
         if isinstance(default, dict):
-            default = Config(default)
+            default = Config.object(default, file=self._file)
 
         try:
             result = self[name]
@@ -56,7 +71,7 @@ class Config(dict):
         result = self.format_value(result)
 
         if isinstance(result, dict):
-            return Config(result)
+            return Config.object(result, file=self._file)
 
         return result
 
@@ -123,10 +138,15 @@ class Config(dict):
                     _doc.update_from_includes()
 
                 if name is not None:
+                    log.debug("%s to self[%s]", action, name)
+
                     getattr(self[name], action)(_doc)
 
                     if action == 'update':
-                        self[name]._files.append(path)
+                        self[name]._files.add(path)
+                        if hasattr(_doc, '_files'):
+                            for f in _doc._files:
+                                self[name]._files.add(f)
 
                         # restore _file_ and _dir_
                         # if _file is not None:
@@ -143,9 +163,14 @@ class Config(dict):
                 else:
                     # _file = self.get('_file_')
                     # _dir  = self.get('_dir_')
+                    log.debug("update self")
 
                     self.update(_doc)
-                    self._files.append(path)
+
+                    self._files.add(path)
+                    if hasattr(_doc, '_files'):
+                        for f in _doc._files:
+                            self._files.add(f)
 
                     # if _file is not None:
                     #     self['_file_'] = _file
@@ -174,10 +199,16 @@ class Config(dict):
         _dir = self._dir
         log.debug("update_from_dir:: path=%s, name=%s, action=%s, recursive=%s, _dir=%s", path, name, action, recursive, _dir)
 
+        #import rpdb2 ; rpdb2.start_embedded_debugger('foo')
+
         if action == 'update':
             if name is not None:
                 if not isinstance(self[name], Config):
                     self[name] = Config.object(self[name], file=self._file)
+
+                if self[name]._file == '-':
+                    self[name].set_filename(self._file)
+
                 if hasattr(self[name], '_dir'):
                     _dir = self[name]._dir
 

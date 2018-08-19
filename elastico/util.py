@@ -14,6 +14,11 @@ log = logging.getLogger('elastico.util')
 from datetime import datetime,date
 from dateutil.parser import parse as dt_parse
 
+def start_of_day(dt):
+    return datetime.combine(to_dt(dt).date(), datetime.min.time())
+
+def end_of_day(dt):
+    return datetime.combine(to_dt(dt).date(), datetime.max.time())
 
 def dt_isoformat(dt, sep='T', timespec='seconds'):
     if not isinstance(dt, (datetime, date)):

@@ -1,7 +1,8 @@
 from argdeco import command, main, arg
-from os.path import exists
+from os.path import exists, join
 import requests
 import os
+import json
 from zipfile import ZipFile, ZipInfo
 
 from .connection import elasticsearch
@@ -24,6 +25,8 @@ class MyZipFile(ZipFile):
         attr = member.external_attr >> 16
         os.chmod(ret_val, attr)
         return ret_val
+
+
 
 @command('install')
 def install(config):
@@ -275,10 +278,10 @@ arg_config = arg('--config', '-c', help="configuration file or '-' to read from 
 
 digest_command('query',
     arg_config,
-    arg('--run-at', help="simulate running this program at given time")
-    arg('--starttime', help="start date")
-    arg('--endtime', help="end date")
-    arg('name', help="name of the digestion to run the query for")
+    arg('--run-at', help="simulate running this program at given time"),
+    arg('--starttime', help="start date"),
+    arg('--endtime', help="end date"),
+    arg('name', help="name of the digestion to run the query for"),
 )
 def cmd_query(config):
     from digest import Digester
@@ -286,9 +289,9 @@ def cmd_query(config):
 
 
 digest_command('collect', arg_config,
-    arg('--starttime', help="start date")
-    arg('--endtime', help="end date")
-    arg('--period', help="length of period (possible: 10s, 10m, 10h)")
+    arg('--starttime', help="start date"),
+    arg('--endtime', help="end date"),
+    arg('--period', help="length of period (possible: 10s, 10m, 10h)"),
 )
 def cmd_collect(config): #, starttime, endtime, period):
     config = read_config(config)
@@ -300,5 +303,43 @@ def cmd_collect(config): #, starttime, endtime, period):
         config['arguments']['endtime'] = endtime
 
 
-####
+import pyaml
+@command('indices', arg_config)
+def cmd_indices(config):
+    from .connection import elasticsearch
+    es = elasticsearch(config)
+    pyaml.p([idx for idx in es.indices.get('_all').keys()])
 
+
+#@command('index')
+
+@command('export', arg_config, arg('index_name'))
+def cmd_export(config):
+    from .connection import elasticsearch
+    es = elasticsearch(config)
+    from elasticsearch.helpers import scan
+
+    # pyaml.p([idx for idx in es.indices.get('_all').keys()])
+    index_name = config.get('index_name')
+
+    result = es.indices.get(index_name)
+    #result = {'mappings': result[index_name]['mappings']}
+    os.makedirs(index_name)
+    with open(join(index_name, 'mappings.json'), 'w') as f:
+        json.dump(result[index_name]['mappings'], f)
+
+    with open(join(index_name, 'data.json'), 'w') as f:
+        for data in scan(es, query={'query': {'match_all': {}}}, index=index_name):
+            json.dump(data, f)
+            f.write("\n")
+
+@command('import', arg_config, arg('index_name'))
+def cmd_import(config):
+    index_name = config.get('index_name')
+
+    with open(join(index_name, 'mappings.json'), 'r') as f:
+        mappings = json.load(f)
+
+    es.indices.create(index_name, body={'mappings': mappings})
+    with open(join(index_name, 'data.json'), 'r') as f:
+        bulk(es, [ json.loads(line) for line in f ], refresh=True)
