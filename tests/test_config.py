@@ -1,4 +1,3 @@
-from elastico.config_factory import ConfigFactory
 from elastico.config import Config
 from textwrap import dedent
 from os.path import dirname
@@ -115,8 +114,7 @@ def test_config_includes(tmpdir):
         k1: value1
     '''))
 
-    config_factory = ConfigFactory(f1.strpath)
-    config = config_factory.create(arg1='val1')
+    config = Config.create(f1.strpath, arg1='val1')
     assert config._dir == dirname(f1.strpath)
     assert config._file == f1.strpath
 
@@ -147,11 +145,10 @@ def test_config_factory_file(tmpdir):
         a1: b1
     """))
 
-    config_factory = ConfigFactory(f1.strpath)
-    cfg = config_factory.create()
+    cfg = Config.create(f1.strpath)
     assert cfg['a1'] == 'b1'
 
-    cfg = config_factory.create(x='y')
+    cfg = Config.create(f1.strpath, x='y')
     assert cfg['arguments']['x'] == 'y'
     assert cfg.get('arguments.x') == 'y'
     assert 'arguments.x' in cfg

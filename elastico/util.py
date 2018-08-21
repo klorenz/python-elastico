@@ -68,6 +68,9 @@ def get_netrc_login_data(data, name):
         filename = nrc.get('file')
         machine  = nrc.get('machine')
 
+    if machine is None:
+        raise LookupError("no netrc data present")
+
     if nrc:
         import netrc
         (user, account, password) = netrc.netrc(filename).authenticators(machine)

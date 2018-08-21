@@ -7,13 +7,50 @@ log = logging.getLogger('elastico.config')
 from .util import string
 
 from argdeco import ConfigDict
+class Undefined:
+    pass
 
 class Config(ConfigDict):
     @classmethod
-    def object(cls, value, file=None):
+    def object(cls, value=None, file=None):
+        if value is None:
+            value = {}
+
         cfg = cls(value)
         cfg.set_filename(file)
         return cfg
+
+    @classmethod
+    def create(cls, config_file=None, arguments=None, **kwargs):
+        if arguments is None:
+            arguments = {}
+
+        if kwargs:
+            arguments.update(kwargs)
+
+        if arguments:
+            cfg = cls({'arguments': arguments})
+        else:
+            cfg = cls()
+
+        if config_file:
+            cfg.load_from_file(config_file)
+
+        return cfg
+
+    def load_from_file(self, file_name):
+        '''argdeco's compiler_factory API'''
+        self.config_file = file_name
+        self.include_file(file_name)
+        self.set_filename(file_name)
+
+    def refresh(self):
+        '''refresh this dictionary by rereading the data from disk'''
+        _arguments = self.get('arguments', {})
+        self.clear()
+        cfg.load_from_file(self.config_file)
+        if _arguments:
+            self['arguments'] = _arguments
 
     def get_filename(self, *configs):
         for config in configs:
@@ -60,6 +97,8 @@ class Config(ConfigDict):
 
 
     def get(self, name, default=None):
+        log.debug("get name=%s", name)
+
         if isinstance(default, dict):
             default = Config.object(default, file=self._file)
 
@@ -236,18 +275,22 @@ class Config(ConfigDict):
 
         return self
 
-    def format_value(self, current=None):
-        if current is None:
+    def format_value(self, current=Undefined):
+        if current is Undefined:
             current = self
+
+        log.debug("format_value current=%s", current)
         if isinstance(current, string):
-            return current.format(**self)
-        if isinstance(current, (list, tuple)):
-            return [self.format_value(v) for v in current]
-        if isinstance(current, dict):
+            result = current.format(**self)
+        elif isinstance(current, (list, tuple)):
+            result = [self.format_value(v) for v in current]
+        elif isinstance(current, dict):
             result = {}
             for k,v in current.items():
+                log.debug("format_value (dict) k=%s, v=%s, current=%s", k,v, current)
                 result[k] = self.format_value(v)
-            return result
         else:
-            return current
+            result = current
+        log.debug("format_value result=%s", result)
+        return result
 

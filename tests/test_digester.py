@@ -117,6 +117,7 @@ def test_make_query():
     """))))
 
     config = ConfigFactory(config).create()
+
     digester = Digester(config)
 
     rule = config['digest']['rules'][0]

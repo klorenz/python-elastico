@@ -1,19 +1,38 @@
-from argdeco import command, main, arg
-from os.path import exists, join
 import requests
 import os
 import json
+import logging
+
+from argdeco import command, main, arg, opt, config_factory
+from os.path import exists, join
 from zipfile import ZipFile, ZipInfo
 
 from .connection import elasticsearch
 from .search import build_search_body
 from .config_factory import ConfigFactory
+from .config import Config
 
-import logging
+# initialize logger
 logger = logging.getLogger('elastico.cli')
 
-# we need also executable flags
+# use our compiler factory for generating config object
+main.configure(compiler_factory=config_factory(Config,
+    prefix = 'arguments',
+    config_file=arg( '--config-file', '-C',
+        help="File to read configuration from"),
+    ))
+
+# add global arguments
+main.add_arguments(
+    arg('--host', '-H', help="Elasticsearch host. (CFG: elasticsearch.hosts)", config="elasticsearch.hosts"),
+    arg('--netrc', help="get netrc entry <machine>. (CFG: netrc.machine)", config="netrc.machine"),
+    arg('--netrc-file', help="set netrc file to read. (CFG: netrc.file)", config="netrc.file"),
+)
+
 class MyZipFile(ZipFile):
+    '''This class overrides :py:meth:~zipfile.ZipFile:'s ``_extract_member``
+    method to set executable flags, if set in ZIP file'''
+
     def _extract_member(self, member, targetpath, pwd):
         if not isinstance(member, ZipInfo):
             member = self.getinfo(member)
@@ -25,7 +44,6 @@ class MyZipFile(ZipFile):
         attr = member.external_attr >> 16
         os.chmod(ret_val, attr)
         return ret_val
-
 
 
 @command('install')
@@ -51,6 +69,18 @@ def install(config):
     zip_ref = MyZipFile(filename, 'r')
     zip_ref.extractall(".")
     zip_ref.close()
+
+@command('run')
+def install(config):
+    """run elastic search in current directory"""
+
+    package = "elasticsearch"
+    version = "6.3.2"
+
+    executable = "{}-{}/bin/elasticsearch".format(package, version)
+
+    os.execl(executable, executable)
+
 
 # @command('testdata',
 #     arg('--index-pattern', '-i', help="pattern for the index name, will be interpreted by strftime with timestamp"),
@@ -92,13 +122,14 @@ def install(config):
 # def cmd_import(config, data):
 #
 
-
 @command('search',
-    arg('--host', '-H', help="url to elasticsearch host, default http://localhost:9200", default=None),
     arg('--format', '-F', help="format string, which is applied to each match", default=None),
     arg('query', help="may be a query, a filename or '-' to read from stdin"),
 )
 def search(config): #host, format, query):
+    pyaml.p(config)
+    return 0
+
     host = config.get('host')
     format = config.get('format')
     query = config.get('query')
@@ -311,27 +342,35 @@ def cmd_indices(config):
     pyaml.p([idx for idx in es.indices.get('_all').keys()])
 
 
-#@command('index')
-
-@command('export', arg_config, arg('index_name'))
+@command('export',
+    arg('--format', choices=('zip', 'dir'), default="dir"),
+    #arg('--directory', '-d', help="name of output, defaults to index_name"),
+    arg('index_name', help="name of index to export"),
+    )
 def cmd_export(config):
+    """Export indices into your working directory
+    """
     from .connection import elasticsearch
     es = elasticsearch(config)
     from elasticsearch.helpers import scan
 
-    # pyaml.p([idx for idx in es.indices.get('_all').keys()])
-    index_name = config.get('index_name')
-
+    index_name = config.get('export.index_name')
     result = es.indices.get(index_name)
-    #result = {'mappings': result[index_name]['mappings']}
-    os.makedirs(index_name)
-    with open(join(index_name, 'mappings.json'), 'w') as f:
-        json.dump(result[index_name]['mappings'], f)
 
-    with open(join(index_name, 'data.json'), 'w') as f:
-        for data in scan(es, query={'query': {'match_all': {}}}, index=index_name):
-            json.dump(data, f)
-            f.write("\n")
+    for idx_name, idx_data in result.items():
+        if config.get('export.format') == 'dir':
+            os.makedirs(idx_name)
+            with open(join(idx_name, 'mappings.json'), 'w') as f:
+                json.dump(result[idx_name]['mappings'], f)
+
+            with open(join(idx_name, 'data.json'), 'w') as f:
+                for data in scan(es, query={'query': {'match_all': {}}}, index=index_name):
+                    json.dump(data, f)
+                    f.write("\n")
+        elif config.get('export.format') == 'zip':
+            pass
+
+
 
 @command('import', arg_config, arg('index_name'))
 def cmd_import(config):
