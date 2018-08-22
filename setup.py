@@ -19,7 +19,7 @@ setup(
         'python-dateutil',
     ],
     packages=[
-        'elastico'
+        'elastico', 'elastico.cli'
     ],
 
     # package_data = {
