@@ -1,10 +1,10 @@
-import sys, yaml, os
+import sys, yaml, os, io
 from os.path import exists, join, isdir, dirname, isabs
 
 import logging
 log = logging.getLogger('elastico.config')
 
-from .util import string
+from .util import string, PY3
 
 from argdeco import ConfigDict
 class Undefined:
@@ -15,6 +15,12 @@ class Config(ConfigDict):
     def object(cls, value=None, file=None):
         if value is None:
             value = {}
+
+        if isinstance(value, string):
+            if not PY3:
+                if not isinstance(value, unicode):
+                    value = value.decode('utf-8')
+            value = yaml.load(io.StringIO(value))
 
         cfg = cls(value)
         cfg.set_filename(file)
@@ -281,7 +287,10 @@ class Config(ConfigDict):
 
         log.debug("format_value current=%s", current)
         if isinstance(current, string):
-            result = current.format(**self)
+            try:
+                result = current.format(**self)
+            except KeyError:
+                result = current
         elif isinstance(current, (list, tuple)):
             result = [self.format_value(v) for v in current]
         elif isinstance(current, dict):

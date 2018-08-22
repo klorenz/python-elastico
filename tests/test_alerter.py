@@ -2,19 +2,19 @@ import yaml, io, pyaml, re
 from textwrap import dedent
 from elastico.util import PY3, to_dt, dt_isoformat
 from elastico.alert import Alerter
+from elastico.config import Config
 
 if PY3:
     unicode = str
 
 def make_config(s):
-    return yaml.load(io.StringIO(dedent(unicode(s))))
-
+    return Config.object(s)
 
 def test_alerter_expand_rules():
     import logging
     logging.getLogger().setLevel(logging.DEBUG)
 
-    config = make_config("""
+    config = Config.object("""
         foo: bar
         alert:
             defaults:
@@ -44,7 +44,7 @@ def test_alerter_expand_rules_foreach():
     import logging
     logging.getLogger().setLevel(logging.DEBUG)
 
-    config = make_config("""
+    config = Config.object("""
         foo: bar
         alert:
             defaults:
@@ -165,7 +165,7 @@ def test_alerter_alert_elasticsearch(monkeypatch):
     es = elasticsearch()
 
     try:
-        alerter = Alerter(config=make_config("""
+        alerter = Alerter(config=Config.object("""
             status_storage: elasticsearch
             alert:
                 rules:
@@ -233,7 +233,7 @@ def test_alerter_alert_filesystem(monkeypatch, tmpdir):
     es = elasticsearch()
 
     try:
-        alerter = Alerter(config=make_config("""
+        alerter = Alerter(config=Config.object("""
             status_storage: filesystem
             status_storage_path: %s
             alert:
@@ -322,7 +322,7 @@ def test_alerter_match():
         es.indices.refresh(index)
         assert False
 
-        alerter = Alerter(config = make_config("""
+        alerter = Alerter(config = Config.object("""
             arguments:
                 run_at:
             alert:
@@ -443,7 +443,7 @@ def test_alerter_match():
         es.indices.delete(index)
 
 def test_alerter_email(monkeypatch):
-    alerter = Alerter(config=make_config("""
+    alerter = Alerter(config=Config.object("""
         alert:
             defaults:
                 hummhomm:

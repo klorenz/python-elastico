@@ -72,6 +72,8 @@ def indent(indent, s):
 #                 self.STATUS[type] = {}
 #             self.STATUS[type][key] = rule
 #
+
+
 class Alerter:
     '''alerter alerts.
 
@@ -96,23 +98,22 @@ class Alerter:
         return result
 
     def get_status_storage_index(self):
-        now = to_dt(dt_isoformat(datetime.utcnow(), 'T', 'seconds'))
-        date = to_dt(self.get_config_value('arguments.run_at', now))
+        date = self.config['run_at']
         return date.strftime('elastico-alert-%Y-%m-%d')
 
     def write_status(self, rule):
-        storage_type = self.get_config_value('status_storage', 'memory')
+        storage_type = self.config.get('alert.status_storage', 'memory')
 
         now = to_dt(dt_isoformat(datetime.utcnow(), 'T', 'seconds'))
         #rule['@timestamp'] = to_dt(self.get_rule_value(rule, 'run_at', now))
-        rule['@timestamp'] = timestamp = dt_isoformat(to_dt(self.get_config_value('arguments.run_at', now)))
+        rule['@timestamp'] = timestamp = dt_isoformat(self.config['run_at'])
         if 'run_at' in rule:
             rule['run_at'] = dt_isoformat(rule['run_at'])
 
         log.debug("rule to write to status: %s", rule)
 
-        key  = self.get_rule_value(rule, 'key')
-        type = self.get_rule_value(rule, 'type')
+        key  = rule.get('key')
+        type = rule.get('type')
 
         if storage_type == 'elasticsearch':
             index = self.get_status_storage_index()
@@ -121,7 +122,7 @@ class Alerter:
             log.debug("index result: %s", result)
 
         elif storage_type == 'filesystem':
-            storage_path = self.get_config_value('status_storage_path', '')
+            storage_path = self.config.get('alert.status_storage_path', '')
             assert storage_path, "For status_storage 'filesystem' you must configure 'status_storage_path' "
 
             path = "{}/{}-{}-latest.yaml".format(storage_path, type, key)
@@ -142,12 +143,12 @@ class Alerter:
             self.STATUS[type][key] = rule
 
     def read_status(self, rule=None, key=None, type=None):
-        storage_type = self.get_config_value('status_storage', 'memory')
+        storage_type = self.config.get('alert.status_storage', 'memory')
 
         if key is None:
-            key  = self.get_rule_value(rule, 'key')
+            key  = rule.get('key')
         if type is None:
-            type = self.get_rule_value(rule, 'type')
+            type = rule.get('type')
 
         if storage_type == 'elasticsearch':
             results = self.es.search(index="elastico-alert-*", body={
@@ -165,7 +166,7 @@ class Alerter:
                 return None
 
         elif storage_type == 'filesystem':
-            storage_path = self.get_config_value('status_storage_path')
+            storage_path = self.config.get('alert.status_storage_path')
             assert storage_path, "For status_storage 'filesystem' you must configure 'status_storage_path' "
             path = "{}/{}-{}-latest.yaml".format(storage_path, type, key)
             with open(path, 'r') as f:
@@ -177,8 +178,8 @@ class Alerter:
     def compose_message_text(self, alert, rule):
         if 'message_text' not in alert:
             import markdown
-            text = self.get_rule_value(alert, 'message', '')
-            if self.get_rule_value(alert, 'alert_message') != 'text_only':
+            text = alert.get('message', '')
+            if alert.get('alert_message') != 'text_only':
                 text = text.rstrip() + "\n\n"+indent(4, pyaml.dump(rule, dst=unicode))+"\n"
 
             log.debug("input for debug: %s", text)
@@ -192,27 +193,27 @@ class Alerter:
 
 
     def alert_email(self, alert, rule, all_clear=None):
-        smtp_host    = self.get_rule_value(alert, 'smtp_host', 'localhost')
-        smtp_ssl     = self.get_rule_value(alert, 'smtp_ssl', False)
-        smtp_port    = self.get_rule_value(alert, 'smtp_port', 0)
+        smtp_host    = alert.get('smtp_host', 'localhost')
+        smtp_ssl     = alert.get('smtp_ssl', False)
+        smtp_port    = alert.get('smtp_port', 0)
 
-        email_from   = self.get_rule_value(alert, 'email_from', 'noreply')
-        email_cc     = self.get_rule_value(alert, 'email_cc', [])
-        email_to     = self.get_rule_value(alert, 'email_to', [])
-        email_bcc    = self.get_rule_value(alert, 'email_bcc', [])
+        email_from   = alert.get('email_from', 'noreply')
+        email_cc     = alert.get('email_cc', [])
+        email_to     = alert.get('email_to', [])
+        email_bcc    = alert.get('email_bcc', [])
 
         log.debug("alert_email(): %s", alert)
 
-        type = self.get_rule_value(rule, 'type')
-        key  = self.get_rule_value(rule, 'key')
+        type = rule.get('type')
+        key  = rule.get('key')
 
         if all_clear:
-            email_subject = self.get_rule_value(rule, 'subject_all_clear', '')
+            email_subject = rule.get('subject_all_clear', '')
             if not email_subject:
                 email_subject = '[elastico] OK - {} {}'.format(type, key)
 
         else:
-            email_subject = self.get_rule_value(rule, 'subject', '')
+            email_subject = rule.get('subject', '')
             log.debug("email_subject (from rule): %s", email_subject)
             if not email_subject:
                 email_subject = "[elastico] ALERT - {} {}".format(type, key)
@@ -309,8 +310,8 @@ class Alerter:
         else:
             rule['status'] = 'alert'
 
-        key = self.get_rule_value(rule, 'key')
-        type = self.get_rule_value(rule, 'type')
+        key = rule.get('key')
+        type = rule.get('type')
 
         log.info('Alert (%s): %s has status %s', type, key, rule['status'])
 
@@ -320,7 +321,7 @@ class Alerter:
 
     def get_query(self, rule, name):
         body = None
-        query = self.get_rule_value(rule, name)
+        query = rule.get(name)
 
         # list of filters
         if isinstance(query, list):
@@ -334,20 +335,16 @@ class Alerter:
         if isinstance(query, dict):
             return query
 
-        timestamp_field = self.get_rule_value(rule, 'timestamp_field', '@timestamp')
-        timeframe = self.get_rule_value(rule, 'timeframe', {'minutes': 60})
+        timestamp_field = rule.get('timestamp_field', '@timestamp')
+        timeframe = rule.get('timeframe', {'minutes': 60})
 
         if 'endtime' in rule:
-            endtime = to_dt(self.get_rule_value(rule, 'endtime'))
+            endtime = to_dt(rule.get('endtime'))
         else:
-            run_at = self.get_config_value("arguments.run_at")
-            if run_at:
-                endtime = to_dt(run_at)
-            else:
-                endtime = datetime.utcnow() #.isoformat('T', 'seconds')+"Z"
+            endtime = self.config['run_at']
 
         if 'starttime' in rule:
-            starttime = to_dt(self.get_rule_value(rule, 'starttime'))
+            starttime = to_dt(rule.get('starttime'))
         else:
             starttime = endtime - timedelta(**timeframe)
 
@@ -365,7 +362,7 @@ class Alerter:
 
     def do_match(self, rule):
         body = self.get_query(rule, 'match')
-        index = self.get_rule_value(rule, 'index')
+        index = rule.get('index')
         assert index, "index must be present in rule"
         results = self.es.search(index=index, body=body)
         rule['match_hits_total'] = results['hits']['total']
@@ -378,7 +375,7 @@ class Alerter:
     def do_no_match(self, rule):
         body = self.get_query(rule, 'no_match')
         body['size'] = 0
-        index = self.get_rule_value(rule, 'index')
+        index = rule.get('index')
         assert index, "index must be present in rule"
 
         results = self.es.search(index=index, body=body)
@@ -412,7 +409,7 @@ class Alerter:
         if need_alert:
             # new status = alert
             if status == 'alert' and last_rule:
-                 delta = timedelta(**self.get_rule_value(rule, 'realert', {'minutes': 60}))
+                 delta = timedelta(**rule.get('realert', {'minutes': 60}))
                  if to_dt(last_rule['@timestamp']) + delta < datetime.utcnow():
                      return rule
 
@@ -437,7 +434,7 @@ class Alerter:
 
         self.config['arguments'].update(arguments)
 
-        for rule in self.get_config_value('alert.rules', []):
+        for rule in self.config.get('alert.rules', []):
             self.process(rule, action=action)
 
     def process(self, rule, action=None):
@@ -462,11 +459,11 @@ class Alerter:
             log.debug("data_set: %s", data_set)
 
             # get arguments
-            r = self.get_config_value('arguments', {}).copy()
+            r = self.config.get('arguments', {}).copy()
 
             # get defaults
-            defaults = self.get_config_value('rule_defaults', {})
-            _class = self.get_rule_value(rule, 'class', 'default')
+            defaults = self.config.get('alert.rule_defaults', {})
+            _class = rule.get('class', 'default')
             r.update(defaults.get(_class, {}))
 
             # update data from rule
@@ -487,7 +484,7 @@ class Alerter:
 
                 alert_rule = {}
 
-                defaults = self.get_config_value('alert.defaults', {})
+                defaults = self.config.get('alert.defaults', {})
                 log.debug("defaults: %s", defaults)
 
                 alert_rule.update(defaults.get(alert['type'],{}))
