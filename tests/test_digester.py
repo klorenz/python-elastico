@@ -56,7 +56,7 @@ import io
 import yaml
 from textwrap import dedent
 from elastico.util import PY3
-from elastico.digest import Digester
+from elastico.digester import Digester
 from elastico.config_factory import ConfigFactory
 
 from pprint import pprint

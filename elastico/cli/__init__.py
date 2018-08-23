@@ -1,4 +1,4 @@
 from .cli import main
 
-from . import alert, digest, import_export, index, search
+from . import alerter, digester, import_export, index, search
 

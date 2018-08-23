@@ -1,7 +1,7 @@
 import yaml, io, pyaml, re
 from textwrap import dedent
 from elastico.util import PY3, to_dt, dt_isoformat
-from elastico.alert import Alerter
+from elastico.alerter import Alerter
 from elastico.config import Config
 
 if PY3:
@@ -519,8 +519,6 @@ def test_alerter_email(monkeypatch):
             Content-Type: text/plain; charset="us-ascii"
             MIME-Version: 1.0
             Content-Transfer-Encoding: 7bit
-
-
 
                 at: 2018-05-05 10:07:00
                 key: test

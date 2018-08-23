@@ -66,10 +66,9 @@ retentions:
 
 
 '''
+from .cli import command
 
+digester_command = command.add_subcommands('digester',)
 
-digest_command = command.add_subcommands('digester',)
-
-digest_command('query',
-    arg('--run-at')
+digester_command('query',
 )

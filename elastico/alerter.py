@@ -1,3 +1,7 @@
+"""alerter -- a simple alerter module
+
+
+"""
 from datetime import datetime, timedelta
 from dateutil.parser import parse as dt_parse
 from itertools import product
@@ -177,7 +181,11 @@ class Alerter:
             import markdown
             text = alert.get('message', '')
             if alert.get('alert_message') != 'text_only':
-                text = text.rstrip() + "\n\n"+indent(4, pyaml.dump(rule, dst=unicode))+"\n"
+                data = indent(4, pyaml.dump(rule, dst=unicode))+"\n"
+                if text.strip():
+                    text = text.rstrip() + "\n\n"+data
+                else:
+                    text = data
 
             log.debug("input for debug: %s", text)
 
@@ -188,8 +196,14 @@ class Alerter:
 
         return alert['message_text'], alert['message_html']
 
+    def notify_command(self, alert, rule, all_clear=None):
+        cmd = alert.get('command')
+        #text, html = self.compose_message_text(alert, rule)
+        if not rule.get('dry_run'):
+            (result, stdout, stderr) = self.do_some_command(cmd, alert)
 
-    def alert_email(self, alert, rule, all_clear=None):
+
+    def notify_email(self, alert, rule, all_clear=None):
         smtp_host    = alert.get('smtp.host', 'localhost')
         smtp_ssl     = alert.get('smtp.ssl', False)
         smtp_port    = alert.get('smtp.port', 0)
@@ -203,19 +217,20 @@ class Alerter:
 
         log.debug("email_to: %s", email_to)
 
+        name = rule.get('name')
         type = rule.get('type')
         key  = rule.get('key')
 
         if all_clear:
             email_subject = rule.get('subject_all_clear', '')
             if not email_subject:
-                email_subject = '[elastico] OK - {} {}'.format(type, key)
+                email_subject = '[elastico] OK - {} {}'.format(type, name)
 
         else:
             email_subject = rule.get('subject', '')
             log.debug("email_subject (from rule): %s", email_subject)
             if not email_subject:
-                email_subject = "[elastico] ALERT - {} {}".format(type, key)
+                email_subject = "[elastico] ALERT - {} {}".format(type, name)
 
         if not isinstance(email_cc, list) : email_cc  = [email_cc]
         if not isinstance(email_to, list) : email_to  = [email_to]
@@ -295,11 +310,6 @@ class Alerter:
 
         smtp.sendmail(from_address, recipients, email_message)
 
-    def alert_command(self, alert, rule):
-        #
-        pass
-
-    #def alert_
 
     def do_alert(self, rule, all_clear=False):
         log.info("do alert for: %s %s", rule.__class__.__name__, rule)
@@ -321,7 +331,7 @@ class Alerter:
             alert = Config.object(alert)
             log.info("process notification %s %s", alert.__class__.__name__, alert)
 
-            getattr(self, 'alert_'+alert['transport'])(alert, rule, all_clear)
+            getattr(self, 'notify_'+alert['transport'])(alert, rule, all_clear)
 
     def get_query(self, rule, name):
         body = None
@@ -367,6 +377,8 @@ class Alerter:
     def do_match(self, rule):
         body = self.get_query(rule, 'match')
         index = rule.get('index')
+        body['size'] = 1
+
         assert index, "index must be present in rule"
         results = self.es.search(index=index, body=body)
         rule['match_hits_total'] = results['hits']['total']
@@ -389,6 +401,44 @@ class Alerter:
 
         return rule['no_match_hits']
 
+    def do_some_command(self, kwargs, rule=None):
+        if isinstance(kwargs, string):
+            kwargs = {'args': kwargs, 'shell': True}
+
+        capture_stdout = kwargs.pop('stdout')
+        capture_stderr = kwargs.pop('stderr')
+
+        if 'input' in kwargs:
+            input = kwargs.pop('input')
+            kwargs['stdin'] = subprocess.PIPE
+        else:
+            input = None
+
+        p = Popen(stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
+        (stdout, stderr) = p.communicate(input)
+        result = p.wait()
+
+        if rule is not None:
+            if capture_stdout:
+                rule['result.stdout'] = stdout
+            if capture_stderr:
+                rule['result.stderr'] = stderr
+            rule['result.exit_code'] = result
+
+        return (result, stdout, stderr)
+
+    def do_command_succeeds(self, alert_rule):
+        cmd = alert_rule.get('command_succeeds')
+        (result, stdout, stderr) = self.do_some_command(cmd, alert_rule)
+
+        return result == rule.get('expect.code', 0)
+
+    def do_command_fails(self, alert_rule):
+        cmd = alert_rule.get('command_fails')
+        (result, stdout, stderr) = self.do_some_command(cmd, alert_rule)
+
+        return result != rule.get('expect.code', 0)
+
     def check_alert(self, rule, status=None):
         if status is None:
             # get last status of this rule
@@ -409,6 +459,12 @@ class Alerter:
 
         if 'no_match' in rule:
             need_alert = need_alert or self.do_no_match(rule)
+
+        if 'command_fails' in rule:
+            need_alert = need_alert or self.do_command_fails(rule)
+
+        if 'command_succeeds' in rule:
+            need_alert = need_alert or self.do_command_succeeds(rule)
 
         if need_alert:
             # new status = alert
