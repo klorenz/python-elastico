@@ -17,7 +17,7 @@ def test_alerter_expand_rules():
     config = Config.object("""
         foo: bar
         alert:
-            defaults:
+            alert_defaults:
                 honey:
                     a: a_value
                 boney:
@@ -47,7 +47,7 @@ def test_alerter_expand_rules_foreach():
     config = Config.object("""
         foo: bar
         alert:
-            defaults:
+            alert_defaults:
                 honey:
                     a: a_value
                 boney:
@@ -125,17 +125,17 @@ def test_alerter_alert(monkeypatch):
 
     monkeypatch.setattr(alerter, 'do_match', mock_matching_succeeds)
 
-    run_at = to_dt("2018-05-05 10:07:00")
-    alerter.process_rules(run_at=run_at)
+    at = to_dt("2018-05-05 10:07:00")
+    alerter.process_rules(at=at)
 
-    run_at_s = dt_isoformat(run_at)
+    at_s = dt_isoformat(at)
 
     assert alerter.STATUS == {
         'fatal': {
             'test': {
                 'status': 'ok',
-                '@timestamp': run_at_s,
-                'run_at': run_at_s,
+                '@timestamp': at_s,
+                'at': at_s,
                 'match_hits': False,
                 'name': 'test',
                 'key': 'test',
@@ -147,8 +147,8 @@ def test_alerter_alert(monkeypatch):
         'warning': {
             'test': {
                 'name': 'test',
-                '@timestamp': run_at_s,
-                'run_at': run_at_s,
+                '@timestamp': at_s,
+                'at': at_s,
                 'status': 'alert',
                 'match_hit': {'foo': 'bar'},
                 'match_hits': True,
@@ -191,19 +191,19 @@ def test_alerter_alert_elasticsearch(monkeypatch):
 
         monkeypatch.setattr(alerter, 'do_match', mock_matching_succeeds)
 
-        run_at = to_dt("2018-05-05 10:02:00")
-        alerter.process_rules(run_at=run_at)
+        at = to_dt("2018-05-05 10:02:00")
+        alerter.process_rules(at=at)
 
         status = {}
         status['warning'] = alerter.read_status(key='test', type='warning')
         status['fatal'] = alerter.read_status(key='test', type='fatal')
 
-        run_at_s = dt_isoformat(run_at)
+        at_s = dt_isoformat(at)
 
         assert status == {
             'fatal': {
-                '@timestamp': run_at_s,
-                'run_at': run_at_s,
+                '@timestamp': at_s,
+                'at': at_s,
                 'name': 'test',
                 'status': 'ok',
                 'match_hits': False,
@@ -213,8 +213,8 @@ def test_alerter_alert_elasticsearch(monkeypatch):
                 'match_hits_total': 0
             },
             'warning': {
-                '@timestamp': run_at_s,
-                'run_at': run_at_s,
+                '@timestamp': at_s,
+                'at': at_s,
                 'name': 'test',
                 'status': 'alert',
                 'match_hit': {'foo': 'bar'},
@@ -260,19 +260,19 @@ def test_alerter_alert_filesystem(monkeypatch, tmpdir):
 
         monkeypatch.setattr(alerter, 'do_match', mock_matching_succeeds)
 
-        run_at = to_dt("2018-05-05 10:02:00")
-        alerter.process_rules(run_at=run_at)
+        at = to_dt("2018-05-05 10:02:00")
+        alerter.process_rules(at=at)
 
         status = {}
         status['warning'] = alerter.read_status(key='test', type='warning')
         status['fatal'] = alerter.read_status(key='test', type='fatal')
 
-        run_at_s = dt_isoformat(run_at)
+        at_s = dt_isoformat(at)
 
         assert status == {
             'fatal': {
-                '@timestamp': run_at_s,
-                'run_at': run_at_s,
+                '@timestamp': at_s,
+                'at': at_s,
                 'name': 'test',
                 'status': 'ok',
                 'match_hits': False,
@@ -282,8 +282,8 @@ def test_alerter_alert_filesystem(monkeypatch, tmpdir):
                 'match_hits_total': 0
             },
             'warning': {
-                '@timestamp': run_at_s,
-                'run_at': run_at_s,
+                '@timestamp': at_s,
+                'at': at_s,
                 'name': 'test',
                 'status': 'alert',
                 'match_hit': {'foo': 'bar'},
@@ -337,20 +337,20 @@ def test_alerter_match():
                           index: test-alerter-match
         """), es_client=es)
 
-        run_at = to_dt("2018-05-05 10:02:00")
-        alerter.process_rules(run_at=run_at)
+        at = to_dt("2018-05-05 10:02:00")
+        alerter.process_rules(at=at)
 
-        run_at_s = dt_isoformat(run_at)
+        at_s = dt_isoformat(at)
 
         assert alerter.STATUS == {
             'fatal': {
-                'value-check': {
+                'value_check': {
                     'name': 'value-check',
-                    '@timestamp': run_at_s,
-                    'run_at': run_at_s,
+                    '@timestamp': at_s,
+                    'at': at_s,
                     'timeframe':{'minutes': 5},
                     'index': 'test-alerter-match',
-                    'key': 'value-check',
+                    'key': 'value_check',
                     'match': 'value:[0 TO 10]',
                     'match_hits': False,
                     'match_hits_total': 0,
@@ -359,13 +359,13 @@ def test_alerter_match():
                 }
             },
             'warning': {
-                'value-check': {
+                'value_check': {
                     'name': 'value-check',
-                    '@timestamp': run_at_s,
-                    'run_at': run_at_s,
+                    '@timestamp': at_s,
+                    'at': at_s,
                     'timeframe':{'minutes': 5},
                     'index': 'test-alerter-match',
-                    'key': 'value-check',
+                    'key': 'value_check',
                     'match': 'value:[10 TO 13]',
                     'match_hits': False,
                     'match_hits_total': 0,
@@ -375,19 +375,19 @@ def test_alerter_match():
             }
         }
 
-        run_at = to_dt("2018-05-05 10:07:00")
-        alerter.process_rules(run_at=run_at)
-        run_at_s = dt_isoformat(run_at)
+        at = to_dt("2018-05-05 10:07:00")
+        alerter.process_rules(at=at)
+        at_s = dt_isoformat(at)
 
         assert alerter.STATUS == {
             'fatal': {
-                'value-check': {
+                'value_check': {
                     'name': 'value-check',
-                    '@timestamp': run_at_s,
-                    'run_at': run_at_s,
+                    '@timestamp': at_s,
+                    'at': at_s,
                     'timeframe':{'minutes': 5},
                     'index': 'test-alerter-match',
-                     'key': 'value-check',
+                     'key': 'value_check',
                      'match': 'value:[0 TO 10]',
                      'match_hit': {
                          '_id': '7',
@@ -408,13 +408,13 @@ def test_alerter_match():
                 }
             },
             'warning': {
-                'value-check': {
+                'value_check': {
                     'name': 'value-check',
-                    '@timestamp': run_at_s,
-                    'run_at': run_at_s,
+                    '@timestamp': at_s,
+                    'at': at_s,
                     'timeframe':{'minutes': 5},
                     'index': 'test-alerter-match',
-                    'key': 'value-check',
+                    'key': 'value_check',
                     'match': 'value:[10 TO 13]',
                     'match_hit': {
                         '_id': '5',
@@ -443,7 +443,7 @@ def test_alerter_match():
 def test_alerter_email(monkeypatch):
     alerter = Alerter(config=Config.object("""
         alert:
-            defaults:
+            alert_defaults:
                 hummhomm:
                     notify:
                     - transport: email
@@ -483,8 +483,8 @@ def test_alerter_email(monkeypatch):
 
     monkeypatch.setattr(alerter, 'email_sendmail', mock_sendmail)
 
-    run_at = to_dt("2018-05-05 10:07:00")
-    alerter.process_rules(run_at=run_at)
+    at = to_dt("2018-05-05 10:07:00")
+    alerter.process_rules(at=at)
 
     message = mock_args['sendmail']['message']
     del mock_args['sendmail']['message']
@@ -520,6 +520,7 @@ def test_alerter_email(monkeypatch):
 
 
 
+                at: 2018-05-05 10:07:00
                 key: test
                 match: x
                 match_hit:
@@ -531,7 +532,6 @@ def test_alerter_email(monkeypatch):
                   - email:
                       to: treebeard@middle.earth
                     transport: email
-                run_at: 2018-05-05 10:07:00
                 status: alert
                 type: hummhomm
 
@@ -541,7 +541,8 @@ def test_alerter_email(monkeypatch):
             MIME-Version: 1.0
             Content-Transfer-Encoding: 7bit
 
-            <pre><code>key: test
+            <pre><code>at: 2018-05-05 10:07:00
+            key: test
             match: x
             match_hit:
               foo: bar
@@ -552,7 +553,6 @@ def test_alerter_email(monkeypatch):
               - email:
                   to: treebeard@middle.earth
                 transport: email
-            run_at: 2018-05-05 10:07:00
             status: alert
             type: hummhomm
             </code></pre>

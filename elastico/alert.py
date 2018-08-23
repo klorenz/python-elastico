@@ -4,7 +4,7 @@ from itertools import product
 
 #from ..config import Config
 
-import logging, sys, json, pyaml
+import logging, sys, json, pyaml, re
 log = logging.getLogger('elastico.alert')
 
 from .util import to_dt, PY3, dt_isoformat, format_value, get_config_value
@@ -95,7 +95,7 @@ class Alerter:
         return result
 
     def get_status_storage_index(self):
-        date = self.config['run_at']
+        date = self.config['at']
         return date.strftime('elastico-alert-%Y-%m-%d')
 
     def write_status(self, rule):
@@ -103,9 +103,9 @@ class Alerter:
 
         now = to_dt(dt_isoformat(datetime.utcnow(), 'T', 'seconds'))
         #rule['@timestamp'] = to_dt(self.get_rule_value(rule, 'run_at', now))
-        rule['@timestamp'] = timestamp = dt_isoformat(self.config['run_at'])
-        if 'run_at' in rule:
-            rule['run_at'] = dt_isoformat(rule['run_at'])
+        rule['@timestamp'] = timestamp = dt_isoformat(self.config['at'])
+        if 'at' in rule:
+            rule['at'] = dt_isoformat(rule['at'])
 
         log.debug("rule to write to status: %s", rule)
 
@@ -345,7 +345,7 @@ class Alerter:
         if 'endtime' in rule:
             endtime = to_dt(rule.get('endtime'))
         else:
-            endtime = self.config['run_at']
+            endtime = self.config['at']
 
         if 'starttime' in rule:
             starttime = to_dt(rule.get('starttime'))
@@ -441,6 +441,7 @@ class Alerter:
         for rule in self.config.get('alert.rules', []):
             self.process(rule, action=action)
 
+    ALIAS = re.compile(r"^\*(\w+)(\.\w+)*(\s+\*(\w+)(\.w+)*)$")
     def process(self, rule, action=None):
         has_foreach = False
         # create a product of all items in 'each' to multiply the rule
@@ -448,6 +449,22 @@ class Alerter:
             data_list = []
 
             for key,val in rule['foreach'].items():
+                if isinstance(val, string):
+                    _value = []
+                    if self.ALIAS.match(val):
+                        _refs = val.split()
+                        for _ref in _refs:
+                            _val = rule.get(_ref[1:])
+
+                            if _val is None:
+                                _val = self.config.get(_ref[1:])
+
+                            assert _val is not None, "could not resolve reference %s mentioned in rule %s" % (_ref, rule['name'])
+                            _value += _val
+
+                    val = _value
+
+                #if val == '@'
                 data_list.append([{key: v} for v in val])
 
             data_sets = product(*data_list)
@@ -464,6 +481,8 @@ class Alerter:
 
             # get arguments
             r = Config.object(self.config.get('arguments', {}).copy())
+
+#            r.update({'data': self.config.get('data', {})))
 
             # get defaults
             defaults = self.config.get('alert.rule_defaults', {})
@@ -483,14 +502,24 @@ class Alerter:
 
             log.debug("rule: %s", r)
 
-            for alert in rule['alerts']:
+            _alerts = rule['alerts']
+            if isinstance(_alerts, dict):
+                _alerts = []
+                for k,v in rule['alerts'].items():
+                    _value = Config.object({'type':k})
+                    _value.update(v)
+                    _alerts.append(_value)
+
+            for alert in _alerts:
                 log.debug("process alert %s", alert)
 
                 alert_rule = Config.object()
 
-                defaults = self.config.get('alert.defaults', {})
+                defaults = self.config.get('alert.alert_defaults', {})
                 log.debug("defaults: %s", defaults)
+                alert_rule.update(defaults.get(alert['type'],{}))
 
+                defaults = rule.get('alert_defaults', {})
                 alert_rule.update(defaults.get(alert['type'],{}))
 
                 log.debug("alert_rule (defaults): %s", alert_rule)
@@ -499,11 +528,11 @@ class Alerter:
                 alert_rule.update(alert)
                 log.debug("alert_rule (alert): %s", alert_rule)
 
-                if has_foreach:
-                    assert 'key' in alert_rule, "key required, if you have foreach-items"
-                else:
-                    if 'key' not in alert_rule:
-                        alert_rule['key'] = r['name']
+                # if has_foreach:
+                #     assert 'key' in alert_rule, "key required, if you have foreach-items"
+                # else:
+                if 'key' not in alert_rule:
+                    alert_rule['key'] = re.sub(r'[^\w]+', '_', r['name'].lower())
 
                 visit_key = (alert_rule['key'], alert_rule['type'])
                 assert visit_key not in visited_keys, "key %s already used in rule %s" % (alert_rule['key'], r['name'])

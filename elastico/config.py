@@ -281,6 +281,7 @@ class Config(ConfigDict):
 
         return self
 
+    #ALIAS = re.compile(r"^\*(\w+)(\.\w+)*$"
     def format_value(self, current=Undefined):
         if current is Undefined:
             current = self
@@ -289,10 +290,13 @@ class Config(ConfigDict):
         if isinstance(current, string):
             try:
                 result = current.format(**self)
+
             except KeyError:
                 result = current
+
         elif isinstance(current, (list, tuple)):
             result = [self.format_value(v) for v in current]
+
         elif isinstance(current, dict):
             result = {}
             for k,v in current.items():

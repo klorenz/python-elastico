@@ -21,12 +21,12 @@ main.configure(compiler_factory=config_factory(Config,
     prog="elastico"
     )
 
-@arg('--run-at',
+@arg('--at',
     help="simulate running this program at given time",
-    config="run_at",
+    config="at",
     default=to_dt(dt_isoformat(datetime.utcnow(), 'T', 'seconds'))
     )
-def arg_run_at(value):
+def arg_at(value):
     return to_dt(value)
 
 # add global arguments
@@ -34,7 +34,7 @@ main.add_arguments(
     arg('--host', '-H', help="Elasticsearch host. (CFG: elasticsearch.hosts)", config="elasticsearch.hosts"),
     arg('--netrc', help="get netrc entry <machine>. (CFG: netrc.machine)", config="netrc.machine"),
     arg('--netrc-file', help="set netrc file to read. (CFG: netrc.file)", config="netrc.file"),
-    arg_run_at,
+    arg_at,
 )
 
 class MyZipFile(ZipFile):
