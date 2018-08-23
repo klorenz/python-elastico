@@ -20,31 +20,58 @@ elastico alert run /path/to/config.yaml
 ## Configuration
 
 Configuration is YAML formatted and read from file or stdin.  A
-configuration file consists of some global settings and alert rules.
+configuration file consists of some global settings and settings corresponding to subcommand.  So configurations related to alerter are found under key `alert`.
 
 You can use format strings referring to other items of the configuration
-file which are expanded in corresponding context.
+file which are expanded as soon the context has all needed values.
 
+### Including other files
+
+You can include other files to organize your configurations. You can either include a single file or all files in a directory.  The included data can be either appended to a list or it can update a dictionary.  Relative paths are relative to the current
+configuration yaml file.
+
+When reading a yaml file, all includes in the main section are
+evaluated.  When appending data, you can have multi-document YAML
+files.  Each document will be appended on its own.
+
+Example:
+
+```
+includes:
+- file: path/to/file.yml
+  update: foo.bar
+- directory: path/to/dir
+  append: foo.data
+
+foo:
+  bar: {}
+  data: []
+```
 
 ### Global settings
+
+- `at`
+
+   Simulate the script running at a point in time.  This helps to test
+   temporal queries, which are relative to run-date.
 
 - `sleep_seconds`
 
   If set, alerter will run forever, sleeping `sleep_seconds` seconds between
   the runs.
 
-- `alert_defaults`
+- `alert.defaults`
 
   This is a dictionary having each alert type as key, defining default
   values for populating alerts, which can be overwritten in a concrete alert
   configuration.
 
-- `status_storage`
+- `alert.status_storage`
 
    This is either "elasticsearch" or "memory" or "filesystem".  Default is
    "memory".
 
-- `status_storage_path`
+- `alert.status_storage_path`
 
   If `status_storage` is "filesystem", this is a path to a directory, where
   status will be stored.
@@ -96,40 +123,46 @@ file which are expanded in corresponding context.
   **Example**
 
   You want to alert, if diskspace on servers is running low.  Mountpoints
-  are on servers are configured in a uniform way.
+  are on servers are configured in a uniform way.  In this example you find also a reference to some other data, which will be expanded when evaluating the `foreach` clause.  
+
+  It works pretty much like the regular YAML expansion with the difference, that the data needs not to be in the same YAML file, but can be at a different place of the config file.
 
   ```yaml
-  rules:
+  data:
+    hosts:
+      - foo
+      - bar
 
-  - rule: diskspace-servers
+  alert:
+    rules:
 
-    foreach:
-      host_name:
-        - foo
-        - bar
-      mount_point:
-        - /
-        - /home
-        - /var
+    - rule: diskspace-servers
 
-    warning_size: 10000000000
-    fatal_size:    5000000000
+      foreach:
+        host_name: "*data.hosts"
+        mount_point:
+          - /
+          - /home
+          - /var
 
-    alerts:
+      warning_size: 10000000000
+      fatal_size:    5000000000
 
-    - type: warning
-      key: "{rule}-{host_name}-{mount_point}"
-      match: >
-        host.name: {host_name}
-        AND system.filesystem.mount_point: "{mount_point}"
-        AND system.filesystem.free:[{fatal_size} TO {warning_size}]
+      alerts:
 
-    - type: fatal
-      key: "{rule}-{host_name}-{mount_point}"
-      match: >
-        host.name: {host_name}
-        AND system.filesystem.mount_point: "{mount_point}"
-        AND system.filesystem.free:[0 TO {fatal_size}]
+      - type: warning
+        key: "{rule}-{host_name}-{mount_point}"
+        match: >
+          host.name: {host_name}
+          AND system.filesystem.mount_point: "{mount_point}"
+          AND system.filesystem.free:[{fatal_size} TO {warning_size}]
+
+      - type: fatal
+        key: "{rule}-{host_name}-{mount_point}"
+        match: >
+          host.name: {host_name}
+          AND system.filesystem.mount_point: "{mount_point}"
+          AND system.filesystem.free:[0 TO {fatal_size}]
   ```
 
   As you can see there are strings with format data.  They will be expanded

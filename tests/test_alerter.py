@@ -16,7 +16,7 @@ def test_alerter_expand_rules():
 
     config = Config.object("""
         foo: bar
-        alert:
+        alerter:
             alert_defaults:
                 honey:
                     a: a_value
@@ -49,7 +49,7 @@ def test_alerter_expand_rules_foreach():
             - foo
             - bar
         foo: bar
-        alert:
+        alerter:
             alert_defaults:
                 honey:
                     a: a_value
@@ -59,7 +59,8 @@ def test_alerter_expand_rules_foreach():
             rules:
               - name: foo
                 foreach:
-                    host: "*a_list"
+                    host: >
+                        *a_list
                     mount_point:
                         - x
                         - y
@@ -102,7 +103,7 @@ def test_alerter_expand_rules_foreach():
 
 def test_alerter_alert(monkeypatch):
     alerter = Alerter(config=make_config("""
-        alert:
+        alerter:
             rules:
                 - name: test
                   alerts:
@@ -168,7 +169,7 @@ def test_alerter_alert_elasticsearch(monkeypatch):
     try:
         alerter = Alerter(config=Config.object("""
             status_storage: elasticsearch
-            alert:
+            alerter:
                 rules:
                     - name: test
                       alerts:
@@ -237,7 +238,7 @@ def test_alerter_alert_filesystem(monkeypatch, tmpdir):
         alerter = Alerter(config=Config.object("""
             status_storage: filesystem
             status_storage_path: %s
-            alert:
+            alerter:
                 rules:
                     - name: test
                       alerts:
@@ -324,7 +325,7 @@ def test_alerter_match():
         #assert False
 
         alerter = Alerter(config = Config.object("""
-            alert:
+            alerter:
                 rules:
                     - name: value-check
                       timeframe:
@@ -443,7 +444,7 @@ def test_alerter_match():
 
 def test_alerter_email(monkeypatch):
     alerter = Alerter(config=Config.object("""
-        alert:
+        alerter:
             alert_defaults:
                 hummhomm:
                     notify:

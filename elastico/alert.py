@@ -83,7 +83,7 @@ class Alerter:
     here more doc.
     '''
 
-    def __init__(self, es_client=None, config={}):
+    def __init__(self, es_client=None, config={}, config_base="alerter"):
         self.es = es_client
         self.config = config
         self.STATUS = {}
@@ -99,7 +99,7 @@ class Alerter:
         return date.strftime('elastico-alert-%Y-%m-%d')
 
     def write_status(self, rule):
-        storage_type = self.config.get('alert.status_storage', 'memory')
+        storage_type = self.config.get('alerter.status_storage', 'memory')
 
         now = to_dt(dt_isoformat(datetime.utcnow(), 'T', 'seconds'))
         #rule['@timestamp'] = to_dt(self.get_rule_value(rule, 'run_at', now))
@@ -119,7 +119,7 @@ class Alerter:
             log.debug("index result: %s", result)
 
         elif storage_type == 'filesystem':
-            storage_path = self.config.get('alert.status_storage_path', '')
+            storage_path = self.config.get('alerter.status_storage_path', '')
             assert storage_path, "For status_storage 'filesystem' you must configure 'status_storage_path' "
 
             path = "{}/{}-{}-latest.yaml".format(storage_path, type, key)
@@ -140,7 +140,7 @@ class Alerter:
             self.STATUS[type][key] = rule
 
     def read_status(self, rule=None, key=None, type=None):
-        storage_type = self.config.get('alert.status_storage', 'memory')
+        storage_type = self.config.get('alerter.status_storage', 'memory')
 
         if key is None:
             key  = rule.get('key')
@@ -148,7 +148,7 @@ class Alerter:
             type = rule.get('type')
 
         if storage_type == 'elasticsearch':
-            results = self.es.search(index="elastico-alert-*", body={
+            results = self.es.search(index="elastico-alerter-*", body={
                 'query': {'bool': {'must': [
                     {'term': {'key': key}},
                     {'term': {'type': type}}
@@ -163,7 +163,7 @@ class Alerter:
                 return None
 
         elif storage_type == 'filesystem':
-            storage_path = self.config.get('alert.status_storage_path')
+            storage_path = self.config.get('alerter.status_storage_path')
             assert storage_path, "For status_storage 'filesystem' you must configure 'status_storage_path' "
             path = "{}/{}-{}-latest.yaml".format(storage_path, type, key)
             with open(path, 'r') as f:
@@ -245,7 +245,7 @@ class Alerter:
         _set_email_header('To', email_to)
 
         if email_cc:
-            _set_eamil_header('Cc', email_cc)
+            _set_email_header('Cc', email_cc)
 
         log.info("alert_email: Bcc: %s", email_bcc)
         recipients = email_to + email_cc + email_bcc
@@ -438,7 +438,7 @@ class Alerter:
 
         self.config['arguments'].update(arguments)
 
-        for rule in self.config.get('alert.rules', []):
+        for rule in self.config.get('alerter.rules', []):
             self.process(rule, action=action)
 
     ALIAS = re.compile(r"^\*(\w+)(\.\w+)*(\s+\*(\w+)(\.w+)*)$")
@@ -449,6 +449,7 @@ class Alerter:
             data_list = []
 
             for key,val in rule['foreach'].items():
+                # expand *foo.bar values.
                 if isinstance(val, string):
                     _value = []
                     if self.ALIAS.match(val):
@@ -482,10 +483,8 @@ class Alerter:
             # get arguments
             r = Config.object(self.config.get('arguments', {}).copy())
 
-#            r.update({'data': self.config.get('data', {})))
-
             # get defaults
-            defaults = self.config.get('alert.rule_defaults', {})
+            defaults = self.config.get('alerter.rule_defaults', {})
             _class = rule.get('class', 'default')
             r.update(defaults.get(_class, {}))
 
@@ -515,7 +514,7 @@ class Alerter:
 
                 alert_rule = Config.object()
 
-                defaults = self.config.get('alert.alert_defaults', {})
+                defaults = self.config.get('alerter.alert_defaults', {})
                 log.debug("defaults: %s", defaults)
                 alert_rule.update(defaults.get(alert['type'],{}))
 
@@ -575,11 +574,6 @@ class Alerter:
             RULES.append(rule)
             return rule
 
-        #from .connection import elasticsearch
-        #es = elasticsearch(config)
         Alerter(None, config).process_rules(config, action=collect_rules)
-        #config = config_factory(create)
-
-        #Alerter(config=config).process_rules(action=collect_rules)
         return RULES
 
