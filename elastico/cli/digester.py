@@ -68,7 +68,7 @@ retentions:
 '''
 
 
-digest_command = command.add_subcommands('digest',)
+digest_command = command.add_subcommands('digester',)
 
 digest_command('query',
     arg('--run-at')
