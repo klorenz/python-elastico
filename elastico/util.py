@@ -1,4 +1,4 @@
-import sys, yaml, os
+import sys, yaml, os, pytz
 from os.path import exists, join, isdir
 
 if (sys.version_info > (3, 0)):
@@ -46,9 +46,12 @@ def dt_isoformat(dt, sep='T', timespec='seconds'):
     return result+"Z"
 
 def to_dt(x):
-    if isinstance(x, datetime):
+    if not isinstance(x, datetime):
+        x = dt_parse(x)
+    if x.tzinfo is None:
+        return pytz.UTC.localize(x)
+    else:
         return x
-    return dt_parse(x)
 
 def get_netrc_login_data(data, name):
     """
@@ -141,4 +144,9 @@ def format_value(data, current=None):
     #     log.debug("error formatting %s: %s", current, e)
     #     return default
 
-
+def first_value(d):
+    '''return the first value of dictionary d'''
+    if PY3:
+        return list(d.values())[0]
+    else:
+        return d.values()[0]

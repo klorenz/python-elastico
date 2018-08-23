@@ -16,6 +16,7 @@ setup(
         'pyaml',
         'argdeco',
         'markdown',
+        'pytz',
         'python-dateutil',
     ],
     packages=[

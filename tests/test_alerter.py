@@ -3,6 +3,7 @@ from textwrap import dedent
 from elastico.util import PY3, to_dt, dt_isoformat
 from elastico.alerter import Alerter
 from elastico.config import Config
+from pprint import pprint
 
 if PY3:
     unicode = str
@@ -314,7 +315,7 @@ def test_alerter_match():
             "_type": "doc",
             "_id": i,
             "value": v,
-            "@timestamp": to_dt("2018-05-05 10:%02d:00" % i),
+            "@timestamp": dt_isoformat(to_dt("2018-05-05 10:%02d:00" % i)),
         } for i,v in enumerate(values)
     ]
 
@@ -396,7 +397,7 @@ def test_alerter_match():
                          '_index': 'test-alerter-match',
                          '_score': None,
                          '_source': {
-                             '@timestamp': '2018-05-05T10:07:00',
+                             '@timestamp': '2018-05-05T10:07:00Z',
                              'value': 5
                          },
                          '_type': 'doc',
@@ -423,7 +424,7 @@ def test_alerter_match():
                         '_index': 'test-alerter-match',
                         '_score': None,
                         '_source': {
-                            '@timestamp': '2018-05-05T10:05:00',
+                            '@timestamp': '2018-05-05T10:05:00Z',
                             'value': 11
                         },
                         '_type': 'doc',
@@ -520,7 +521,7 @@ def test_alerter_email(monkeypatch):
             MIME-Version: 1.0
             Content-Transfer-Encoding: 7bit
 
-                at: 2018-05-05 10:07:00
+                at: 2018-05-05 10:07:00+00:00
                 key: test
                 match: x
                 match_hit:
@@ -541,7 +542,7 @@ def test_alerter_email(monkeypatch):
             MIME-Version: 1.0
             Content-Transfer-Encoding: 7bit
 
-            <pre><code>at: 2018-05-05 10:07:00
+            <pre><code>at: 2018-05-05 10:07:00+00:00
             key: test
             match: x
             match_hit:
@@ -563,4 +564,113 @@ def test_alerter_email(monkeypatch):
 #     alerter = Alerter()
 #     rule = {'foo': {'bar': 'value'}}
 #     assert alerter.get_rule_value(rule, "foo.bar") == 'value'
+
+def test_alerter_command():
+
+    alerter = Alerter(config=Config.object("""
+        alerter:
+            alert_defaults:
+                hummhomm:
+                    notify:
+                    - transport: command
+                      command: "echo 'humm'"
+                      stdout: true
+
+            rules:
+                - name: test
+                  alerts:
+                  - type: hummhomm
+                    command_succeeds: >
+                        bash -c "exit 0"
+                  - type: hummhomm
+                    command_fails: >
+                        bash -c "exit 1"
+                  - type: hummhomm
+                    command_succeeds: >
+                        bash -c "exit 1"
+    """))
+
+    at = to_dt("2018-05-05 10:07:00")
+    alerter.process_rules(at=at)
+
+    pprint(alerter.STATUS)
+    assert alerter.STATUS == {
+        'hummhomm': {'test': {'@timestamp': '2018-05-05T10:07:00Z',
+                       'at': '2018-05-05T10:07:00Z',
+                       'command_succeeds': 'bash -c "exit 1"\n',
+                       'key': 'test',
+                       'name': 'test',
+                       'notify': [{'at': at,
+                                   'command': "echo 'humm'",
+                                   'command_succeeds': 'bash -c "exit 1"\n',
+                                   'key': 'test',
+                                   'message': {'data': '    at: 2018-05-05 '
+                                                       '10:07:00+00:00\n'
+                                                       '    command_succeeds: '
+                                                       '"bash -c \\"exit '
+                                                       '1\\"\\n"\n'
+                                                       '    key: test\n'
+                                                       '    name: test\n'
+                                                       '    notify:\n'
+                                                       "      - command: 'echo "
+                                                       "''humm'''\n"
+                                                       '        stdout: true\n'
+                                                       '        transport: '
+                                                       'command\n'
+                                                       '    result:\n'
+                                                       '      exit_code: 1\n'
+                                                       '    status: ok\n'
+                                                       '    type: hummhomm\n'
+                                                       '\n',
+                                               'html': '<pre><code>at: '
+                                                       '2018-05-05 '
+                                                       '10:07:00+00:00\n'
+                                                       'command_succeeds: '
+                                                       '"bash -c \\"exit '
+                                                       '1\\"\\n"\n'
+                                                       'key: test\n'
+                                                       'name: test\n'
+                                                       'notify:\n'
+                                                       "  - command: 'echo "
+                                                       "''humm'''\n"
+                                 '    stdout: true\n'
+                                                       '    transport: '
+                                                       'command\n'
+                                                       'result:\n'
+                                                       '  exit_code: 1\n'
+                                                       'status: ok\n'
+                                                       'type: hummhomm\n'
+                                                       '</code></pre>',
+                                               'plain': '    at: 2018-05-05 '
+                                                        '10:07:00+00:00\n'
+                                                        '    command_succeeds: '
+                                                        '"bash -c \\"exit '
+                                                        '1\\"\\n"\n'
+                                                        '    key: test\n'
+                                                        '    name: test\n'
+                                                        '    notify:\n'
+                                                        '      - command: '
+                                                        "'echo ''humm'''\n"
+                                                        '        stdout: true\n'
+                                                        '        transport: '
+                                                        'command\n'
+                                                        '    result:\n'
+                                                        '      exit_code: 1\n'
+                                                        '    status: ok\n'
+                                                        '    type: hummhomm\n'
+                                                        '\n',
+                                       'subject': '[elastico] OK - '
+                                                          'hummhomm test'},
+                                   'name': 'test',
+                                   'result': {'exit_code': 0,
+                                              'stdout': b'humm'},
+                                   'status': 'ok',
+                                   'stdout': True,
+                                   'transport': 'command',
+                                   'type': 'hummhomm'}],
+                       'result': {'exit_code': 1},
+                       'status': 'ok',
+                       'type': 'hummhomm'}}}
+
+
 

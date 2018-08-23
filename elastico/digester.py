@@ -9,7 +9,7 @@ automatic) and put them into buckets and write them to some history index.
 
 """
 
-from .util import string, to_dt, start_of_day, end_of_day
+from .util import string, to_dt, start_of_day, end_of_day, first_value
 
 import logging
 log = logging.getLogger('elastico.digest')
@@ -84,7 +84,7 @@ class Digester(DataProcessor):
             agg_items = self.get_aggregate_items(bucket_type, field_specs)
             log.debug("bucket - agg_items: %s", agg_items)
             for spec in agg_items:
-                value = spec.values()[0]
+                value = first_value(spec)
                 value['aggs'] = aggs
                 aggs = spec
 
@@ -113,13 +113,13 @@ class Digester(DataProcessor):
 
         # set interval (unless set)
         timestamp_interval = digest.get('timestamp_interval', '1h')
-        key = timestamp_agg.keys()[0]
+        key = list(timestamp_agg.keys())[0]
 
         log.debug("key=%s, agg_type=%s, timestamp_agg=%s", key, agg_type, timestamp_agg)
         if 'interval' not in timestamp_agg[key][agg_type]:
             timestamp_agg[key][agg_type]['interval'] = timestamp_interval
 
-        timestamp_agg.values()[0]['aggs'] = aggs
+        first_value(timestamp_agg)['aggs'] = aggs
 
         result = {
             'query': query,

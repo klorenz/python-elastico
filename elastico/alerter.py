@@ -5,6 +5,8 @@
 from datetime import datetime, timedelta
 from dateutil.parser import parse as dt_parse
 from itertools import product
+from subprocess import Popen, PIPE
+from copy import deepcopy
 
 #from ..config import Config
 
@@ -177,11 +179,13 @@ class Alerter:
             return self.STATUS.get(type, {}).get(key)
 
     def compose_message_text(self, alert, rule):
-        if 'message_text' not in alert:
+        if 'message.plain' not in alert:
             import markdown
-            text = alert.get('message', '')
-            if alert.get('alert_message') != 'text_only':
-                data = indent(4, pyaml.dump(rule, dst=unicode))+"\n"
+            data = indent(4, pyaml.dump(rule, dst=unicode))+"\n"
+            alert['message.data'] = data
+
+            text = alert.get('message.text', '')
+            if alert.get('message.type') != 'text_only':
                 if text.strip():
                     text = text.rstrip() + "\n\n"+data
                 else:
@@ -191,17 +195,17 @@ class Alerter:
 
             html = markdown.markdown(text)
 
-            alert['message_text'] = text
-            alert['message_html'] = html
+            alert['message.plain'] = text
+            alert['message.html'] = html
 
-        return alert['message_text'], alert['message_html']
+        return alert['message.plain'], alert['message.html']
 
     def notify_command(self, alert, rule, all_clear=None):
+        #
         cmd = alert.get('command')
         #text, html = self.compose_message_text(alert, rule)
         if not rule.get('dry_run'):
             (result, stdout, stderr) = self.do_some_command(cmd, alert)
-
 
     def notify_email(self, alert, rule, all_clear=None):
         smtp_host    = alert.get('smtp.host', 'localhost')
@@ -217,28 +221,11 @@ class Alerter:
 
         log.debug("email_to: %s", email_to)
 
-        name = rule.get('name')
-        type = rule.get('type')
-        key  = rule.get('key')
-
-        if all_clear:
-            email_subject = rule.get('subject_all_clear', '')
-            if not email_subject:
-                email_subject = '[elastico] OK - {} {}'.format(type, name)
-
-        else:
-            email_subject = rule.get('subject', '')
-            log.debug("email_subject (from rule): %s", email_subject)
-            if not email_subject:
-                email_subject = "[elastico] ALERT - {} {}".format(type, name)
-
         if not isinstance(email_cc, list) : email_cc  = [email_cc]
         if not isinstance(email_to, list) : email_to  = [email_to]
         if not isinstance(email_bcc, list): email_bcc = [email_bcc]
 
         recipients = email_to + email_cc + email_bcc
-
-        text, html = self.compose_message_text(alert, rule)
 
         from email.mime.multipart import MIMEMultipart
         from email.mime.text import MIMEText
@@ -256,7 +243,7 @@ class Alerter:
             rule['email.%s' % key.lower()] = msg[key]
 
         _set_email_header('From', email_from)
-        _set_email_header('Subject', email_subject)
+        _set_email_header('Subject', alert['message.subject'])
         _set_email_header('To', email_to)
 
         if email_cc:
@@ -266,8 +253,8 @@ class Alerter:
         recipients = email_to + email_cc + email_bcc
 
         # Record the MIME types of both parts - text/plain and text/html.
-        part1 = MIMEText(text, 'plain')
-        part2 = MIMEText(html, 'html')
+        part1 = MIMEText(alert['message.plain'], 'plain')
+        part2 = MIMEText(alert['message.html'], 'html')
 
         # Attach parts into message container.
         # According to RFC 2046, the last part of a multipart message, in this case
@@ -278,8 +265,8 @@ class Alerter:
         email_message = msg.as_string()
 
         log.info("Send email alert: smtp_host=%s, smtp_port=%s, smtp_ssl=%s", smtp_host, smtp_port, smtp_ssl)
-        log.info("alert_email: Text: %s", text)
-        log.info("alert_email: HTML: %s", html)
+        log.info("alert_email: Text: %s", alert['message.plain'])
+        log.info("alert_email: HTML: %s", alert['message.html'])
 
         if not rule.get('dry_run'):
             self.email_sendmail(
@@ -326,12 +313,38 @@ class Alerter:
 
         #import rpdb2 ; rpdb2.start_embedded_debugger('foo')
 
-        for alert in rule.get('notify', []):
+        notifications = []
+
+        for notify in rule.get('notify', []):
             # TODO: check, why alert is of type dict instead of Config
-            alert = Config.object(alert)
+            alert = Config.object(deepcopy(rule))
+            del alert['notify']
+
+            alert.update(notify)
+            notifications.append(alert)
+
             log.info("process notification %s %s", alert.__class__.__name__, alert)
 
+            name = rule.get('name')
+            type = rule.get('type')
+            key  = rule.get('key')
+
+            if all_clear:
+                subject = rule.get('subject.ok', '')
+            else:
+                subject = rule.get('subject.alert', '')
+
+            if not subject:
+                status = rule['status'].upper()
+                subject = '[elastico] {} - {} {}'.format(status, type, name)
+
+            alert['message.subject'] = subject
+            self.compose_message_text(alert, rule)
+
             getattr(self, 'notify_'+alert['transport'])(alert, rule, all_clear)
+
+        if notifications:
+            rule['notify'] = notifications
 
     def get_query(self, rule, name):
         body = None
@@ -402,28 +415,44 @@ class Alerter:
         return rule['no_match_hits']
 
     def do_some_command(self, kwargs, rule=None):
+        log.debug("do_some_command: kwargs=%s, rule=%s", kwargs, rule)
         if isinstance(kwargs, string):
             kwargs = {'args': kwargs, 'shell': True}
 
-        capture_stdout = kwargs.pop('stdout')
-        capture_stderr = kwargs.pop('stderr')
+        def _get_capture_value(name):
+            if name in kwargs:
+                return kwargs.pop(name)
+            elif rule is not None:
+                return rule.get(name)
+            else:
+                return False
+            return
+
+        capture_stdout = _get_capture_value('stdout')
+        capture_stderr = _get_capture_value('stderr')
 
         if 'input' in kwargs:
             input = kwargs.pop('input')
-            kwargs['stdin'] = subprocess.PIPE
+            kwargs['stdin'] = PIPE
         else:
             input = None
 
-        p = Popen(stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
+        p = Popen(stdout=PIPE, stderr=PIPE, **kwargs)
         (stdout, stderr) = p.communicate(input)
         result = p.wait()
 
+        log.debug("capture_stdout=%s, capture_stderr=%s", capture_stdout, capture_stderr)
+
         if rule is not None:
             if capture_stdout:
+                if stdout.count("\n".encode('utf-8')) == 1:
+                    stdout = stdout.strip()
                 rule['result.stdout'] = stdout
             if capture_stderr:
                 rule['result.stderr'] = stderr
             rule['result.exit_code'] = result
+
+        log.debug("rule: %s", rule)
 
         return (result, stdout, stderr)
 
@@ -431,13 +460,13 @@ class Alerter:
         cmd = alert_rule.get('command_succeeds')
         (result, stdout, stderr) = self.do_some_command(cmd, alert_rule)
 
-        return result == rule.get('expect.code', 0)
+        return result == alert_rule.get('expect.code', 0)
 
     def do_command_fails(self, alert_rule):
         cmd = alert_rule.get('command_fails')
         (result, stdout, stderr) = self.do_some_command(cmd, alert_rule)
 
-        return result != rule.get('expect.code', 0)
+        return result != alert_rule.get('expect.code', 0)
 
     def check_alert(self, rule, status=None):
         if status is None:
@@ -470,7 +499,7 @@ class Alerter:
             # new status = alert
             if status == 'alert' and last_rule:
                  delta = timedelta(**rule.get('realert', {'minutes': 60}))
-                 if to_dt(last_rule['@timestamp']) + delta < datetime.utcnow():
+                 if to_dt(last_rule['@timestamp']) < to_dt(datetime.utcnow()):
                      return rule
 
             self.do_alert(rule)
@@ -592,7 +621,7 @@ class Alerter:
                 visit_key = (alert_rule['key'], alert_rule['type'])
                 assert visit_key not in visited_keys, "key %s already used in rule %s" % (alert_rule['key'], r['name'])
 
-                assert 'match' in alert_rule or 'no_match' in alert_rule
+                assert 'match' in alert_rule or 'no_match' in alert_rule or 'command_succeeds' in alert_rule or 'command_fails' in alert_rule
 
                 log.debug("alert_rule: %s", alert_rule)
 
