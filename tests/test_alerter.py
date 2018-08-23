@@ -45,6 +45,9 @@ def test_alerter_expand_rules_foreach():
     logging.getLogger().setLevel(logging.DEBUG)
 
     config = Config.object("""
+        a_list:
+            - foo
+            - bar
         foo: bar
         alert:
             alert_defaults:
@@ -56,9 +59,7 @@ def test_alerter_expand_rules_foreach():
             rules:
               - name: foo
                 foreach:
-                    host:
-                        - foo
-                        - bar
+                    host: "*a_list"
                     mount_point:
                         - x
                         - y
