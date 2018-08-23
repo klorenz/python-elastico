@@ -2,10 +2,13 @@ from datetime import datetime, timedelta
 from dateutil.parser import parse as dt_parse
 from itertools import product
 
+#from ..config import Config
+
 import logging, sys, json, pyaml
 log = logging.getLogger('elastico.alert')
 
 from .util import to_dt, PY3, dt_isoformat, format_value, get_config_value
+from .config import Config
 
 if PY3:
     unicode = str
@@ -84,12 +87,6 @@ class Alerter:
         self.es = es_client
         self.config = config
         self.STATUS = {}
-
-    def get_config_value(self, key, default=None):
-        return get_config_value(self.config, key, default)
-
-    def get_rule_value(self, rule, key, default=None):
-        return get_config_value(rule, key, default)
 
     def wipe_status_storage(self):
         '''remove all status storages'''
@@ -193,16 +190,18 @@ class Alerter:
 
 
     def alert_email(self, alert, rule, all_clear=None):
-        smtp_host    = alert.get('smtp_host', 'localhost')
-        smtp_ssl     = alert.get('smtp_ssl', False)
-        smtp_port    = alert.get('smtp_port', 0)
+        smtp_host    = alert.get('smtp.host', 'localhost')
+        smtp_ssl     = alert.get('smtp.ssl', False)
+        smtp_port    = alert.get('smtp.port', 0)
 
-        email_from   = alert.get('email_from', 'noreply')
-        email_cc     = alert.get('email_cc', [])
-        email_to     = alert.get('email_to', [])
-        email_bcc    = alert.get('email_bcc', [])
+        email_from   = alert.get('email.from', 'noreply')
+        email_cc     = alert.get('email.cc', [])
+        email_to     = alert.get('email.to', [])
+        email_bcc    = alert.get('email.bcc', [])
 
         log.debug("alert_email(): %s", alert)
+
+        log.debug("email_to: %s", email_to)
 
         type = rule.get('type')
         key  = rule.get('key')
@@ -239,7 +238,7 @@ class Alerter:
             else:
                 msg[key] = value
 
-            rule['email_%s' % key.lower()] = msg[key]
+            rule['email.%s' % key.lower()] = msg[key]
 
         _set_email_header('From', email_from)
         _set_email_header('Subject', email_subject)
@@ -303,7 +302,7 @@ class Alerter:
     #def alert_
 
     def do_alert(self, rule, all_clear=False):
-        log.info("do alert for: %s", rule)
+        log.info("do alert for: %s %s", rule.__class__.__name__, rule)
 
         if all_clear:
             rule['status'] = 'ok'
@@ -315,8 +314,13 @@ class Alerter:
 
         log.info('Alert (%s): %s has status %s', type, key, rule['status'])
 
+        #import rpdb2 ; rpdb2.start_embedded_debugger('foo')
+
         for alert in rule.get('notify', []):
-            log.info("process notification %s", alert)
+            # TODO: check, why alert is of type dict instead of Config
+            alert = Config.object(alert)
+            log.info("process notification %s %s", alert.__class__.__name__, alert)
+
             getattr(self, 'alert_'+alert['transport'])(alert, rule, all_clear)
 
     def get_query(self, rule, name):
@@ -459,7 +463,7 @@ class Alerter:
             log.debug("data_set: %s", data_set)
 
             # get arguments
-            r = self.config.get('arguments', {}).copy()
+            r = Config.object(self.config.get('arguments', {}).copy())
 
             # get defaults
             defaults = self.config.get('alert.rule_defaults', {})
@@ -482,7 +486,7 @@ class Alerter:
             for alert in rule['alerts']:
                 log.debug("process alert %s", alert)
 
-                alert_rule = {}
+                alert_rule = Config.object()
 
                 defaults = self.config.get('alert.defaults', {})
                 log.debug("defaults: %s", defaults)
@@ -496,7 +500,7 @@ class Alerter:
                 log.debug("alert_rule (alert): %s", alert_rule)
 
                 if has_foreach:
-                    assert 'key' in alert_rule
+                    assert 'key' in alert_rule, "key required, if you have foreach-items"
                 else:
                     if 'key' not in alert_rule:
                         alert_rule['key'] = r['name']
