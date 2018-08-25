@@ -153,6 +153,7 @@ def test_alerter_alert(monkeypatch):
                 '@timestamp': at_s,
                 'at': at_s,
                 'status': 'alert',
+                'notifications': {},
                 'match_hit': {'foo': 'bar'},
                 'match_hits': True,
                 'key': 'test',
@@ -220,6 +221,7 @@ def test_alerter_alert_elasticsearch(monkeypatch):
                 'at': at_s,
                 'name': 'test',
                 'status': 'alert',
+                'notifications': {},
                 'match_hit': {'foo': 'bar'},
                 'match_hits': True,
                 'key': 'test',
@@ -293,6 +295,7 @@ def test_alerter_alert_filesystem(monkeypatch, tmpdir):
                 'match_hits': True,
                 'key': 'test',
                 'type': 'warning',
+                'notifications': {},
                 'match': 'x',
                 'match_hits_total': 4
             }
@@ -392,6 +395,7 @@ def test_alerter_match():
                     'index': 'test-alerter-match',
                      'key': 'value_check',
                      'match': 'value:[0 TO 10]',
+                    'notifications': {},
                      'match_hit': {
                          '_id': '7',
                          '_index': 'test-alerter-match',
@@ -417,6 +421,7 @@ def test_alerter_match():
                     'at': at_s,
                     'timeframe':{'minutes': 5},
                     'index': 'test-alerter-match',
+                    'notifications': {},
                     'key': 'value_check',
                     'match': 'value:[10 TO 13]',
                     'match_hit': {
@@ -449,7 +454,8 @@ def test_alerter_email(monkeypatch):
             alert_defaults:
                 hummhomm:
                     notify:
-                    - transport: email
+                    - notification: treebeard
+                      transport: email
                       email:
                         to: treebeard@middle.earth
 
@@ -532,6 +538,7 @@ def test_alerter_email(monkeypatch):
                 notify:
                   - email:
                       to: treebeard@middle.earth
+                    notification: treebeard
                     transport: email
                 status: alert
                 type: hummhomm
@@ -553,6 +560,7 @@ def test_alerter_email(monkeypatch):
             notify:
               - email:
                   to: treebeard@middle.earth
+                notification: treebeard
                 transport: email
             status: alert
             type: hummhomm
@@ -569,12 +577,16 @@ def test_alerter_command():
 
     alerter = Alerter(config=Config.object("""
         alerter:
+            notifications:
+                sound:
+                    transport: command
+                    command: "echo 'humm'"
+                    stdout: true
+
             alert_defaults:
                 hummhomm:
                     notify:
-                    - transport: command
-                      command: "echo 'humm'"
-                      stdout: true
+                      - sound
 
             rules:
                 - name: test
@@ -593,14 +605,15 @@ def test_alerter_command():
     at = to_dt("2018-05-05 10:07:00")
     alerter.process_rules(at=at)
 
-    pprint(alerter.STATUS)
+    pprint(alerter.STATUS, indent=2)
     assert alerter.STATUS == {
         'hummhomm': {'test': {'@timestamp': '2018-05-05T10:07:00Z',
                        'at': '2018-05-05T10:07:00Z',
                        'command_succeeds': 'bash -c "exit 1"\n',
                        'key': 'test',
                        'name': 'test',
-                       'notify': [{'at': at,
+                       'notify': ['sound'],
+                       'notifications': {'sound': {'at': at,
                                    'command': "echo 'humm'",
                                    'command_succeeds': 'bash -c "exit 1"\n',
                                    'key': 'test',
@@ -612,11 +625,7 @@ def test_alerter_command():
                                                        '    key: test\n'
                                                        '    name: test\n'
                                                        '    notify:\n'
-                                                       "      - command: 'echo "
-                                                       "''humm'''\n"
-                                                       '        stdout: true\n'
-                                                       '        transport: '
-                                                       'command\n'
+                                                       "      - sound\n"
                                                        '    result:\n'
                                                        '      exit_code: 1\n'
                                                        '    status: ok\n'
@@ -631,11 +640,7 @@ def test_alerter_command():
                                                        'key: test\n'
                                                        'name: test\n'
                                                        'notify:\n'
-                                                       "  - command: 'echo "
-                                                       "''humm'''\n"
-                                 '    stdout: true\n'
-                                                       '    transport: '
-                                                       'command\n'
+                                                       "  - sound\n"
                                                        'result:\n'
                                                        '  exit_code: 1\n'
                                                        'status: ok\n'
@@ -649,11 +654,7 @@ def test_alerter_command():
                                                         '    key: test\n'
                                                         '    name: test\n'
                                                         '    notify:\n'
-                                                        '      - command: '
-                                                        "'echo ''humm'''\n"
-                                                        '        stdout: true\n'
-                                                        '        transport: '
-                                                        'command\n'
+                                                        '      - sound\n'
                                                         '    result:\n'
                                                         '      exit_code: 1\n'
                                                         '    status: ok\n'
@@ -662,15 +663,16 @@ def test_alerter_command():
                                        'subject': '[elastico] OK - '
                                                           'hummhomm test'},
                                    'name': 'test',
+                                   'notification': 'sound',
+                                   'notify': ['sound'],
                                    'result': {'exit_code': 0,
                                               'stdout': b'humm'},
                                    'status': 'ok',
                                    'stdout': True,
                                    'transport': 'command',
-                                   'type': 'hummhomm'}],
+                                   'type': 'hummhomm'}},
                        'result': {'exit_code': 1},
                        'status': 'ok',
                        'type': 'hummhomm'}}}
-
 
 

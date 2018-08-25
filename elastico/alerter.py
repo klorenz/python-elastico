@@ -21,67 +21,16 @@ if PY3:
     string = str
 else:
     string = basestring
+    Exception = StandardError
 
 def indent(indent, s):
     if isinstance(indent, int):
         indent = " "*indent
     return "".join([ indent+line for line in s.splitlines(1) ])
 
-# class NewAlerter(DataProcessor):
-#
-#     def wipe_status_storage(self):
-#         '''remove all status storages'''
-#         result = self.es_client.indices.delete('elastico-alert-*')
-#         log.debug("wipe_status_storage: %s", result)
-#         return result
-#
-#     def get_status_storage_index(self):
-#         now = to_dt(dt_isoformat(datetime.utcnow(), 'T', 'seconds'))
-#         date = to_dt(self.config.get('arguments.run_at', now))
-#         return date.strftime('elastico-alert-%Y-%m-%d')
-#
-#     def write_status(self, rule):
-#         storage_type = self.config.get('status_storage', 'memory')
-#
-#         now = to_dt(dt_isoformat(datetime.utcnow(), 'T', 'seconds'))
-#         #rule['@timestamp'] = to_dt(self.get_rule_value(rule, 'run_at', now))
-#         rule['@timestamp'] = timestamp = dt_isoformat(to_dt(self.config.get('arguments.run_at', now)))
-#         if 'run_at' in rule:
-#             rule['run_at'] = dt_isoformat(rule['run_at'])
-#
-#         log.debug("rule to write to status: %s", rule)
-#
-#         key  = rule.get('key')
-#         type = rule.get('type')
-#
-#         if storage_type == 'elasticsearch':
-#             index = self.get_status_storage_index()
-#             result = self.es_client.index(index=index, doc_type="elastico_alert_status", body=rule.dict())
-#             self.es.indices.refresh(index)
-#             log.debug("index result: %s", result)
-#
-#         elif storage_type == 'filesystem':
-#             storage_path = self.get_config_value('status_storage_path', '')
-#             assert storage_path, "For status_storage 'filesystem' you must configure 'status_storage_path' "
-#
-#             path = "{}/{}-{}-latest.yaml".format(storage_path, type, key)
-#             path = "{}/{}-{}-latest.yaml".format(storage_path, type, key)
-#
-#             with open(path, 'w') as f:
-#                 json.dump(rule, f)
-#
-#             # for history
-#             dt = dt_isoformat(timestamp, '_', 'seconds')
-#             path = "{}/{}-{}-{}.json".format(storage_path, type, key, dt)
-#             with open(path, 'w') as f:
-#                 json.dump(rule, f)
-#
-#         elif storage_type == 'memory':
-#             if type not in self.STATUS:
-#                 self.STATUS[type] = {}
-#             self.STATUS[type][key] = rule
-#
 
+class NotificationError(Exception):
+    pass
 
 class Alerter:
     '''alerter alerts.
@@ -201,9 +150,7 @@ class Alerter:
         return alert['message.plain'], alert['message.html']
 
     def notify_command(self, alert, rule, all_clear=None):
-        #
         cmd = alert.get('command')
-        #text, html = self.compose_message_text(alert, rule)
         if not rule.get('dry_run'):
             (result, stdout, stderr) = self.do_some_command(cmd, alert)
 
@@ -269,7 +216,7 @@ class Alerter:
         log.info("alert_email: HTML: %s", alert['message.html'])
 
         if not rule.get('dry_run'):
-            self.email_sendmail(
+            result = self.email_sendmail(
                 host=smtp_host,
                 port=smtp_port,
                 use_ssl=smtp_ssl,
@@ -279,6 +226,17 @@ class Alerter:
                 recipients=recipients,
                 message=email_message
             )
+
+            if result:
+                for recipient in recipients:
+                    if recipient not in result:
+                        result[recipient] = {'status': 200, 'message': 'ok'}
+                    else:
+                        status, msg = result[recipient]
+                        result[recipient] = {'status': status, 'message': msg}
+
+                raise NotificationError("Some recipients had errors", result)
+
 
     def email_sendmail(host='localhost', port=0, use_ssl=False,
         username=None, password=None,
@@ -295,7 +253,9 @@ class Alerter:
         if username is not None:
             smtp.login(username, password)
 
-        smtp.sendmail(from_address, recipients, email_message)
+        result = smtp.sendmail(from_address, recipients, email_message)
+        smtp.quit()
+        return result
 
 
     def do_alert(self, rule, all_clear=False):
@@ -313,38 +273,73 @@ class Alerter:
 
         #import rpdb2 ; rpdb2.start_embedded_debugger('foo')
 
-        notifications = []
+        notification_specs = self.config.get('alerter.notifications', {})
+        log.info("notification_specs: %s", notification_specs)
 
-        for notify in rule.get('notify', []):
-            # TODO: check, why alert is of type dict instead of Config
-            alert = Config.object(deepcopy(rule))
-            del alert['notify']
+        notifications = {}
 
-            alert.update(notify)
-            notifications.append(alert)
+        for notification in rule.get('notify', []):
+            try:
+                alert = Config.object(deepcopy(rule))
 
-            log.info("process notification %s %s", alert.__class__.__name__, alert)
+                if isinstance(notification, string):
+                    alert.update(deepcopy(notification_specs[notification]))
+                    alert['notification'] = notification
 
-            name = rule.get('name')
-            type = rule.get('type')
-            key  = rule.get('key')
+                else:
+                    alert.update(deepcopy(notification))
+                    notification = alert['notification']
 
-            if all_clear:
-                subject = rule.get('subject.ok', '')
-            else:
-                subject = rule.get('subject.alert', '')
+                notifications[notification] = alert
 
-            if not subject:
-                status = rule['status'].upper()
-                subject = '[elastico] {} - {} {}'.format(status, type, name)
+                log.info("process notification %s %s", alert.__class__.__name__, alert)
 
-            alert['message.subject'] = subject
-            self.compose_message_text(alert, rule)
+                name = rule.get('name')
+                type = rule.get('type')
+                key  = rule.get('key')
 
-            getattr(self, 'notify_'+alert['transport'])(alert, rule, all_clear)
+                if all_clear:
+                    subject = rule.get('subject.ok', '')
+                else:
+                    subject = rule.get('subject.alert', '')
 
-        if notifications:
-            rule['notify'] = notifications
+                if not subject:
+                    status = rule['status'].upper()
+                    subject = '[elastico] {} - {} {}'.format(status, type, name)
+
+                alert['message.subject'] = subject
+                self.compose_message_text(alert, rule)
+
+                getattr(self, 'notify_'+alert['transport'])(alert, rule, all_clear)
+                alert['status'] = 'ok'
+
+            except Exception as e:
+                log.error('Error while processing notification %s', notification, exc_info=1)
+
+                rule['status'] = 'error'
+
+                args = e.args[1:]
+                if len(args) > 1:
+                    details = dict( (str(i), a) for a in enumerate(args, 1)  )
+                elif len(args) == 1:
+                    details = args[0]
+                if len(args) == 0:
+                    details = None
+
+                if hasattr(e, 'message'):
+                    message = e.message
+                else:
+                    message = e.__class__.__name__+"("+str(e)+")"
+
+                alert['error'] = {
+                    'message': e.message,
+                    'details': details,
+                }
+
+                log.debug('alert[error]: %s', alert['error'])
+
+        rule['notifications'] = notifications
+
 
     def get_query(self, rule, name):
         body = None
@@ -483,17 +478,17 @@ class Alerter:
             rule['status'] = 'ok'
 
         need_alert = False
-        if 'match' in rule:
-            need_alert = self.do_match(rule)
-
-        if 'no_match' in rule:
-            need_alert = need_alert or self.do_no_match(rule)
-
         if 'command_fails' in rule:
             need_alert = need_alert or self.do_command_fails(rule)
 
         if 'command_succeeds' in rule:
             need_alert = need_alert or self.do_command_succeeds(rule)
+
+        if 'match' in rule:
+            need_alert = self.do_match(rule)
+
+        if 'no_match' in rule:
+            need_alert = need_alert or self.do_no_match(rule)
 
         if need_alert:
             # new status = alert

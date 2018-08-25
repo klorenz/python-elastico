@@ -1,4 +1,4 @@
-from argdeco import command, main, arg, opt, config_factory
+from argdeco import command, main, arg, opt, config_factory, PYTHON_ARGCOMPLETE_OK
 from os.path import exists, join
 from zipfile import ZipFile, ZipInfo
 
