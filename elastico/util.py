@@ -1,4 +1,4 @@
-import sys, yaml, os, pytz
+import sys, yaml, os, pytz, pyaml, json
 from os.path import exists, join, isdir
 
 if (sys.version_info > (3, 0)):
@@ -41,7 +41,6 @@ def dt_isoformat(dt, sep='T', timespec='seconds'):
                 result = result.rsplit('.', 1)[0]
         else:
             raise Exception("timespec %s not supported", timespec)
-        print("result2: %s" % result)
 
     return result+"Z"
 
@@ -150,3 +149,11 @@ def first_value(d):
         return list(d.values())[0]
     else:
         return d.values()[0]
+
+def write_output(config, data):
+    output_format = config.get('output_format', 'yaml')
+    if output_format == 'yaml':
+        pyaml.p(data)
+    elif output_format == 'json':
+        print(json.dumps(data, indent=2))
+

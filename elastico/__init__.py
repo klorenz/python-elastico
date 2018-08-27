@@ -1,2 +1,1 @@
-import logging
-logging.basicConfig()
+from . import pyaml_ext

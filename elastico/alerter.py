@@ -1,7 +1,7 @@
 """alerter -- a simple alerter module
 
-
 """
+
 from datetime import datetime, timedelta
 from dateutil.parser import parse as dt_parse
 from itertools import product
@@ -11,7 +11,7 @@ from copy import deepcopy
 #from ..config import Config
 
 import logging, sys, json, pyaml, re
-log = logging.getLogger('elastico.alert')
+log = logging.getLogger('elastico.alerter')
 
 from .util import to_dt, PY3, dt_isoformat, format_value, get_config_value
 from .config import Config
@@ -50,7 +50,7 @@ class Alerter:
         return result
 
     def get_status_storage_index(self):
-        date = self.config['at']
+        date = to_dt(self.config['at'])
         return date.strftime('elastico-alert-%Y-%m-%d')
 
     def write_status(self, rule):
@@ -271,16 +271,22 @@ class Alerter:
 
         log.info('Alert (%s): %s has status %s', type, key, rule['status'])
 
-        #import rpdb2 ; rpdb2.start_embedded_debugger('foo')
-
         notification_specs = self.config.get('alerter.notifications', {})
         log.info("notification_specs: %s", notification_specs)
 
         notifications = {}
+        _notify = rule.get('notify', [])
+        if isinstance(_notify, dict):
+            _tmp = []
+            for k,v in _notify.items():
+                _notification = deepcopy(v)
+                _notification['notification'] = k
+                _tmp.append(_notification)
+            _notify = _tmp
 
-        for notification in rule.get('notify', []):
+        for notification in _notify:
             try:
-                alert = Config.object(deepcopy(rule))
+                alert = Config.object(rule)
 
                 if isinstance(notification, string):
                     alert.update(deepcopy(notification_specs[notification]))
@@ -289,8 +295,6 @@ class Alerter:
                 else:
                     alert.update(deepcopy(notification))
                     notification = alert['notification']
-
-                notifications[notification] = alert
 
                 log.info("process notification %s %s", alert.__class__.__name__, alert)
 
@@ -311,8 +315,13 @@ class Alerter:
                 self.compose_message_text(alert, rule)
 
                 getattr(self, 'notify_'+alert['transport'])(alert, rule, all_clear)
-                alert['status'] = 'ok'
 
+                if self.config.get('dry_run'):
+                    alert['status'] = 'dry_run'
+                else:
+                    alert['status'] = 'ok'
+
+                notifications[notification] = alert.format_value()
             except Exception as e:
                 log.error('Error while processing notification %s', notification, exc_info=1)
 
@@ -338,7 +347,19 @@ class Alerter:
 
                 log.debug('alert[error]: %s', alert['error'])
 
-        rule['notifications'] = notifications
+        rule['notifications'] = _n = {}
+        for n_name,notification in notifications.items():
+            _n[n_name] = {}
+            for k,v in notification.items():
+                if k not in rule or k in ('status', 'error', 'result'):
+                    _n[n_name][k] = v
+
+            # we do not need plain as composition of text and data
+            # we do not need data (as in rule)
+            # we do not need to store the HTML text
+            del _n[n_name]['message']['plain']
+            del _n[n_name]['message']['html']
+            del _n[n_name]['message']['data']
 
 
     def get_query(self, rule, name):
@@ -351,19 +372,19 @@ class Alerter:
 
         # lucene query string
         if isinstance(query, string):
-            filters = [{'query_string': {'query': query}}]
+            filters = [{'query_string': {'query': query.strip()}}]
 
         # complete search body (including timerange, if any)
         if isinstance(query, dict):
             return query
 
         timestamp_field = rule.get('timestamp_field', '@timestamp')
-        timeframe = rule.get('timeframe', {'minutes': 60})
+        timeframe = rule.get('timeframe', {'minutes': 15})
 
         if 'endtime' in rule:
             endtime = to_dt(rule.get('endtime'))
         else:
-            endtime = self.config['at']
+            endtime = to_dt(self.config['at'])
 
         if 'starttime' in rule:
             starttime = to_dt(rule.get('starttime'))
@@ -388,26 +409,27 @@ class Alerter:
         body['size'] = 1
 
         assert index, "index must be present in rule"
+        rule['match_query'] = body
         results = self.es.search(index=index, body=body)
+        log.debug("results: %s", results)
         rule['match_hits_total'] = results['hits']['total']
         if rule['match_hits_total']:
             rule['match_hit'] = results['hits']['hits'][0]
-        rule['match_hits'] = results['hits']['total'] > 0
 
-        return rule['match_hits']
+        min_total = rule.get('matches_min')
+        max_total = rule.get('matches_max')
+        if min_total is None and max_total is None:
+            min_total = 1
 
-    def do_no_match(self, rule):
-        body = self.get_query(rule, 'no_match')
-        body['size'] = 0
-        index = rule.get('index')
-        assert index, "index must be present in rule"
+        _result = True
+        if min_total is not None:
+            _result = _result and results['hits']['total'] >= min_total
+        if max_total is not None:
+            _result = _result and results['hits']['total'] <= max_total
 
-        results = self.es.search(index=index, body=body)
+        rule['alert_trigger'] = _result
+        return _result
 
-        rule['no_match_hits_total'] = results['hits']['total']
-        rule['no_match_hits'] = results['hits']['total'] == 0
-
-        return rule['no_match_hits']
 
     def do_some_command(self, kwargs, rule=None):
         log.debug("do_some_command: kwargs=%s, rule=%s", kwargs, rule)
@@ -455,13 +477,17 @@ class Alerter:
         cmd = alert_rule.get('command_succeeds')
         (result, stdout, stderr) = self.do_some_command(cmd, alert_rule)
 
-        return result == alert_rule.get('expect.code', 0)
+        _result = result == alert_rule.get('expect.code', 0)
+        rule['alert_trigger'] = _result
+        return _result
 
     def do_command_fails(self, alert_rule):
         cmd = alert_rule.get('command_fails')
         (result, stdout, stderr) = self.do_some_command(cmd, alert_rule)
 
-        return result != alert_rule.get('expect.code', 0)
+        _result = result != alert_rule.get('expect.code', 0)
+        rule['alert_trigger'] = _result
+        return _result
 
     def check_alert(self, rule, status=None):
         if status is None:
@@ -476,6 +502,8 @@ class Alerter:
 
         if status is None:
             rule['status'] = 'ok'
+        else:
+            rule['status'] = status
 
         need_alert = False
         if 'command_fails' in rule:
@@ -487,14 +515,12 @@ class Alerter:
         if 'match' in rule:
             need_alert = self.do_match(rule)
 
-        if 'no_match' in rule:
-            need_alert = need_alert or self.do_no_match(rule)
-
         if need_alert:
             # new status = alert
             if status == 'alert' and last_rule:
                  delta = timedelta(**rule.get('realert', {'minutes': 60}))
                  if to_dt(last_rule['@timestamp']) < to_dt(datetime.utcnow()):
+                     rule['status'] = 'wait-realert'
                      return rule
 
             self.do_alert(rule)
@@ -512,28 +538,37 @@ class Alerter:
 
         return rule
 
-    def process_rules(self, config={}, action=None, **arguments):
+    def process_rules(self, action=None, **arguments):
         if 'arguments' not in self.config:
             self.config['arguments'] = {}
 
         self.config['arguments'].update(arguments)
 
         for rule in self.config.get('alerter.rules', []):
-            self.process(rule, action=action)
+            if not rule: continue
 
-    ALIAS = re.compile(r"^\*(\w+)(\.\w+)*(\s+\*(\w+)(\.w+)*)$")
+            log.debug("rule: %s", rule)
+            log.info("=== RULE <%s> =========================", rule.get('class', rule.get('name')))
+
+            self.process(Config.object(rule), action=action)
+
+    ALIAS = re.compile(r"^\s*\*(\w+)(\.\w+)*(\s+\*(\w+)(\.\w+)*)*\s*$")
     def process(self, rule, action=None):
         has_foreach = False
         # create a product of all items in 'each' to multiply the rule
         if 'foreach' in rule:
             data_list = []
 
-            for key,val in rule['foreach'].items():
+            for key,val in rule.get('foreach', {}).items():
+                log.debug("key: %s, val: %s", key, val)
                 # expand *foo.bar values.
                 if isinstance(val, string):
+                    log.debug("val is aliases candidate")
                     _value = []
                     if self.ALIAS.match(val):
-                        _refs = val.split()
+                        log.debug("there are aliases: %s", val)
+
+                        _refs = val.strip().split()
                         for _ref in _refs:
                             _val = rule.get(_ref[1:])
 
@@ -543,7 +578,9 @@ class Alerter:
                             assert _val is not None, "could not resolve reference %s mentioned in rule %s" % (_ref, rule['name'])
                             _value += _val
 
-                    val = _value
+                        val = _value
+                    else:
+                        log.debug("no aliases: %s", val)
 
                 #if val == '@'
                 data_list.append([{key: v} for v in val])
@@ -561,69 +598,84 @@ class Alerter:
             log.debug("data_set: %s", data_set)
 
             # get arguments
-            r = Config.object(self.config.get('arguments', {}).copy())
+            r = Config.object(deepcopy(self.config.get('arguments', {})))
 
             # get defaults
             defaults = self.config.get('alerter.rule_defaults', {})
             _class = rule.get('class', 'default')
-            r.update(defaults.get(_class, {}))
+
+            log.debug("rule class: %s", _class)
+            _defaults = defaults.get(_class, {})
+
+            log.debug("rule defaults: %s", _defaults)
+            r.update(deepcopy(_defaults))
 
             # update data from rule
-            r.update(rule)
+            r.update(rule.format_value())
 
             if 'foreach' in r:
                 del r['foreach']
+            _alerts = r.get('alerts', [])
             if 'alerts' in r:
                 del r['alerts']
 
             for data in data_set:
-                r.update(data)
+                r.update(deepcopy(data))
 
-            log.debug("rule: %s", r)
+            log.info("--- rule %s", r.get('name'))
 
-            _alerts = rule['alerts']
             if isinstance(_alerts, dict):
-                _alerts = []
-                for k,v in rule['alerts'].items():
+                _tmp = []
+                for k,v in _alerts.items():
                     _value = Config.object({'type':k})
-                    _value.update(v)
-                    _alerts.append(_value)
+                    _value.update(deepcopy(v))
+                    _tmp.append(_value)
+                _alerts = _tmp
 
             for alert in _alerts:
                 log.debug("process alert %s", alert)
-
                 alert_rule = Config.object()
 
+                assert 'type' in alert
+
                 defaults = self.config.get('alerter.alert_defaults', {})
-                log.debug("defaults: %s", defaults)
-                alert_rule.update(defaults.get(alert['type'],{}))
+                alert_rule.update(deepcopy(defaults.get(alert.get('type'),{})))
 
                 defaults = rule.get('alert_defaults', {})
-                alert_rule.update(defaults.get(alert['type'],{}))
+                alert_rule.update(deepcopy(defaults.get(alert.get('type'),{})))
 
-                log.debug("alert_rule (defaults): %s", alert_rule)
-                alert_rule.update(r)
+                alert_rule.update(r.format_value())
 
-                alert_rule.update(alert)
+                if hasattr(alert, 'format_value'):
+                    alert_rule.update(alert.format_value())
+                else:
+                    alert_rule.update(alert)
+
                 log.debug("alert_rule (alert): %s", alert_rule)
 
-                # if has_foreach:
-                #     assert 'key' in alert_rule, "key required, if you have foreach-items"
-                # else:
                 if 'key' not in alert_rule:
-                    alert_rule['key'] = re.sub(r'[^\w]+', '_', r['name'].lower())
+                    alert_rule['key'] = re.sub(r'[^\w]+', '_', r.get('name').lower())
 
-                visit_key = (alert_rule['key'], alert_rule['type'])
-                assert visit_key not in visited_keys, "key %s already used in rule %s" % (alert_rule['key'], r['name'])
+                log.info("----- alert %s-%s", alert_rule['type'], alert_rule['key'])
 
-                assert 'match' in alert_rule or 'no_match' in alert_rule or 'command_succeeds' in alert_rule or 'command_fails' in alert_rule
+                visit_key = (alert_rule.get('key'), alert_rule.get('type'))
+                assert visit_key not in visited_keys, \
+                    "key %s already used in rule %s" \
+                    % (alert_rule.get('key'), r.get('name'))
+
+                assert 'match' in alert_rule or 'no_match' in alert_rule \
+                    or 'command_succeeds' in alert_rule \
+                    or 'command_fails' in alert_rule
 
                 log.debug("alert_rule: %s", alert_rule)
 
                 if action:
-                    action(alert_rule)
+                    action(alert_rule.format_value())
                 else:
-                    self.check_alert(alert_rule)
+                    self.check_alert(alert_rule.format_value())
+
+            if not _alerts:
+                action(rule)
 
     @classmethod
     def run(cls, config):
@@ -654,6 +706,6 @@ class Alerter:
             RULES.append(rule)
             return rule
 
-        Alerter(None, config).process_rules(config, action=collect_rules)
+        Alerter(None, config).process_rules(action=collect_rules)
         return RULES
 

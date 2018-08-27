@@ -1,8 +1,10 @@
+import logging
+
 from argdeco import command, main, arg, opt, config_factory, PYTHON_ARGCOMPLETE_OK
-from os.path import exists, join
+from os.path import exists, join, expanduser
 from zipfile import ZipFile, ZipInfo
 
-from ..util import to_dt, dt_isoformat
+from ..util import to_dt, dt_isoformat, write_output
 from ..config import Config
 
 import os
@@ -11,29 +13,53 @@ from datetime import datetime
 
 # initialize logger
 logger = logging.getLogger('elastico.cli')
+import os
 
-# use our compiler factory for generating config object
-main.configure(compiler_factory=config_factory(Config,
-    prefix = 'arguments',
-    config_file=arg( '--config-file', '-C',
-        help="File to read configuration from"),
+# find config_file default
+# ------------------------
+if 'USERPROFILE' in os.environ and 'HOME' not in os.environ:
+    os.environ['HOME'] = os.environ['USERPROFILE']
+
+config_file_user   = expanduser("~/.config/elastico/elastico.yml")
+config_file_system = "/etc/elastico/elastico.yml"
+
+if exists(config_file_user):
+    config_file_default = config_file_user
+elif exists(config_file_system):
+    config_file_default = config_file_system
+else:
+    config_file_default = None
+
+# configure main function
+# -----------------------
+main.configure(
+    compiler_factory=config_factory(Config,
+        prefix = 'arguments',
+        config_file=arg( '--config-file', '-C',
+            help="File to read configuration from",
+            default = config_file_default,
+            ),
     ),
-    prog="elastico"
+    debug=True,
+    verbosity=True,
+    prog="elastico",
     )
 
 @arg('--at',
     help="simulate running this program at given time",
     config="at",
-    default=to_dt(dt_isoformat(datetime.utcnow(), 'T', 'seconds'))
+    default=dt_isoformat(datetime.utcnow(), 'T', 'seconds')
     )
 def arg_at(value):
-    return to_dt(value)
+    return dt_isoformat(to_dt(value))
 
 # add global arguments
+# --------------------
 main.add_arguments(
     arg('--host', '-H', help="Elasticsearch host. (CFG: elasticsearch.hosts)", config="elasticsearch.hosts"),
     arg('--netrc', help="get netrc entry <machine>. (CFG: netrc.machine)", config="netrc.machine"),
     arg('--netrc-file', help="set netrc file to read. (CFG: netrc.file)", config="netrc.file"),
+    arg('--output-format', '-F', help="set output format", choices=['json', 'yaml'], default='yaml'),
     arg_at,
 )
 

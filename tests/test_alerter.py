@@ -457,7 +457,7 @@ def test_alerter_email(monkeypatch):
                     - notification: treebeard
                       transport: email
                       email:
-                        to: treebeard@middle.earth
+                        to: 'treebeard@middle.earth'
 
             rules:
                 - name: test
@@ -537,7 +537,7 @@ def test_alerter_email(monkeypatch):
                 name: test
                 notify:
                   - email:
-                      to: treebeard@middle.earth
+                      to: 'treebeard@middle.earth'
                     notification: treebeard
                     transport: email
                 status: alert
@@ -559,7 +559,7 @@ def test_alerter_email(monkeypatch):
             name: test
             notify:
               - email:
-                  to: treebeard@middle.earth
+                  to: 'treebeard@middle.earth'
                 notification: treebeard
                 transport: email
             status: alert
@@ -620,8 +620,9 @@ def test_alerter_command():
                                    'message': {'data': '    at: 2018-05-05 '
                                                        '10:07:00+00:00\n'
                                                        '    command_succeeds: '
-                                                       '"bash -c \\"exit '
-                                                       '1\\"\\n"\n'
+                                                       '|\n'
+                                                       '      bash -c "exit '
+                                                       '1"\n'
                                                        '    key: test\n'
                                                        '    name: test\n'
                                                        '    notify:\n'
@@ -634,9 +635,9 @@ def test_alerter_command():
                                                'html': '<pre><code>at: '
                                                        '2018-05-05 '
                                                        '10:07:00+00:00\n'
-                                                       'command_succeeds: '
-                                                       '"bash -c \\"exit '
-                                                       '1\\"\\n"\n'
+                                                       'command_succeeds: |\n'
+                                                       '  bash -c "exit '
+                                                       '1"\n'
                                                        'key: test\n'
                                                        'name: test\n'
                                                        'notify:\n'
@@ -648,9 +649,9 @@ def test_alerter_command():
                                                        '</code></pre>',
                                                'plain': '    at: 2018-05-05 '
                                                         '10:07:00+00:00\n'
-                                                        '    command_succeeds: '
-                                                        '"bash -c \\"exit '
-                                                        '1\\"\\n"\n'
+                                                        '    command_succeeds: |\n'
+                                                        '      bash -c "exit '
+                                                        '1"\n'
                                                         '    key: test\n'
                                                         '    name: test\n'
                                                         '    notify:\n'

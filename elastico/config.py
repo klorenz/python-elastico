@@ -1,5 +1,5 @@
 import sys, yaml, os, io
-from os.path import exists, join, isdir, dirname, isabs
+from os.path import exists, join, isdir, dirname, isabs, abspath
 
 import logging
 log = logging.getLogger('elastico.config')
@@ -46,6 +46,7 @@ class Config(ConfigDict):
 
     def load_from_file(self, file_name):
         '''argdeco's compiler_factory API'''
+        file_name = abspath(file_name)
         self.config_file = file_name
         self.include_file(file_name)
         self.set_filename(file_name)
@@ -54,7 +55,7 @@ class Config(ConfigDict):
         '''refresh this dictionary by rereading the data from disk'''
         _arguments = self.get('arguments', {})
         self.clear()
-        cfg.load_from_file(self.config_file)
+        self.load_from_file(self.config_file)
         if _arguments:
             self['arguments'] = _arguments
 
@@ -82,6 +83,8 @@ class Config(ConfigDict):
         raise AttributeError(name)
 
     def __getitem__(self, name):
+#        log.debug("__getitem__: %s", name)
+
         try:
             arguments = super(Config, self).__getitem__('arguments')
         except KeyError:
@@ -89,12 +92,15 @@ class Config(ConfigDict):
             arguments = {}
 
         if name == 'arguments':
-            return arguments
+            result = arguments
+        else:
+            try:
+                result = arguments[name]
+            except KeyError:
+                result = super(Config, self).__getitem__(name)
+        return result
 
-        try:
-            return arguments[name]
-        except KeyError:
-            return super(Config, self).__getitem__(name)
+        #return self.format_value(result)
 
     # def __setitem__(self, name):
     #     arguments = super(Config, self).__getitem__(self, 'arguments')
@@ -281,18 +287,17 @@ class Config(ConfigDict):
 
         return self
 
-    #ALIAS = re.compile(r"^\*(\w+)(\.\w+)*$"
+
     def format_value(self, current=Undefined):
         if current is Undefined:
             current = self
 
-        log.debug("format_value current=%s", current)
         if isinstance(current, string):
             try:
                 result = current.format(**self)
-
             except KeyError:
                 result = current
+            log.debug("format_value result=%s", result)
 
         elif isinstance(current, (list, tuple)):
             result = [self.format_value(v) for v in current]
@@ -300,10 +305,9 @@ class Config(ConfigDict):
         elif isinstance(current, dict):
             result = {}
             for k,v in current.items():
-                log.debug("format_value (dict) k=%s, v=%s, current=%s", k,v, current)
                 result[k] = self.format_value(v)
         else:
             result = current
-        log.debug("format_value result=%s", result)
+
         return result
 
