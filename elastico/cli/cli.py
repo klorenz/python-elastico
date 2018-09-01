@@ -1,6 +1,6 @@
 import logging
 
-from argdeco import command, main, arg, opt, config_factory, PYTHON_ARGCOMPLETE_OK
+from argdeco import command, main, arg, opt, config_factory
 from os.path import exists, join, expanduser
 from zipfile import ZipFile, ZipInfo
 

@@ -13,14 +13,14 @@ index, which it queries or in a given directory.
 You run it with:
 
 ```bash
-elastico alert run /path/to/config.yaml
+elastico -C /path/to/config.yaml alerter run
 ```
 
 
 ## Configuration
 
 Configuration is YAML formatted and read from file or stdin.  A
-configuration file consists of some global settings and settings corresponding to subcommand.  So configurations related to alerter are found under key `alert`.
+configuration file consists of some global settings and settings corresponding to subcommand.  So configurations related to alerter are found under key `alerter`.
 
 You can use format strings referring to other items of the configuration
 file which are expanded as soon the context has all needed values.
@@ -55,23 +55,22 @@ foo:
    Simulate the script running at a point in time.  This helps to test
    temporal queries, which are relative to run-date.
 
-- `sleep_seconds`
+- `alerter.serve.sleep_seconds`
 
-  If set, alerter will run forever, sleeping `sleep_seconds` seconds between
-  the runs.
+  Set sleep time between runs in server mode.
 
-- `alert.defaults`
+- `alerter.alert_defaults`
 
   This is a dictionary having each alert type as key, defining default
   values for populating alerts, which can be overwritten in a concrete alert
   configuration.
 
-- `alert.status_storage`
+- `alerter.status_storage`
 
    This is either "elasticsearch" or "memory" or "filesystem".  Default is
    "memory".
 
-- `alert.status_storage_path`
+- `alerter.status_storage_path`
 
   If `status_storage` is "filesystem", this is a path to a directory, where
   status will be stored.
@@ -133,10 +132,10 @@ foo:
       - foo
       - bar
 
-  alert:
+  alerter:
     rules:
 
-    - rule: diskspace-servers
+    - name: diskspace-servers {host_name} {mount_point}
 
       foreach:
         host_name: "*data.hosts"
@@ -149,20 +148,17 @@ foo:
       fatal_size:    5000000000
 
       alerts:
+        warning:
+          match: >
+            host.name: {host_name}
+            AND system.filesystem.mount_point: "{mount_point}"
+            AND system.filesystem.free:[{fatal_size} TO {warning_size}]
 
-      - type: warning
-        key: "{rule}-{host_name}-{mount_point}"
-        match: >
-          host.name: {host_name}
-          AND system.filesystem.mount_point: "{mount_point}"
-          AND system.filesystem.free:[{fatal_size} TO {warning_size}]
-
-      - type: fatal
-        key: "{rule}-{host_name}-{mount_point}"
-        match: >
-          host.name: {host_name}
-          AND system.filesystem.mount_point: "{mount_point}"
-          AND system.filesystem.free:[0 TO {fatal_size}]
+        fatal:
+          match: >
+            host.name: {host_name}
+            AND system.filesystem.mount_point: "{mount_point}"
+            AND system.filesystem.free:[0 TO {fatal_size}]
   ```
 
   As you can see there are strings with format data.  They will be expanded
@@ -202,9 +198,9 @@ and raise the alerts:
 
   [timedelta]: https://docs.python.org/2/library/datetime.html#timedelta-objects
 
-- `alert`
+- `notify`
 
-  This is a list of alert configurations to actually do something for alerting.
+  This is a list of actions done to alert configurations to actually do something for alerting.
 
   See
 
