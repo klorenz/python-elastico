@@ -82,10 +82,11 @@ class Config(ConfigDict):
         if name == '_files':
             self._files = set()
             return self._files
-        # try:
-        #     return self.format_value(self[name])
-        # except KeyError:
-        #     pass
+
+        try:
+            return self[name]
+        except KeyError:
+            pass
         raise AttributeError(name)
 
     def __getitem__(self, name):

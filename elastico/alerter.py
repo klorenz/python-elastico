@@ -143,31 +143,17 @@ class Alerter:
         elif storage_type == 'memory':
             return self.STATUS.get(type, {}).get(key)
 
-    def compose_message_text(self, text, alert, rule):
+    def compose_message_text(self, message, rule, **kwargs):
         '''compose message text from text with data from alert and rule
 
         '''
         import markdown
-        data = indent(4, pyaml.dump(rule, dst=unicode))+"\n"
-
-        log.info("alertdata: %s", alert)
-
-        text = text.format(
-            _    = alert.get('match_hit._source', {}),
-            rule = rule,
-            **alert)
-
-        plain = text
-
-        if alert.get('message.type') != 'text_only':
-            if plain.strip():
-                plain = plain.rstrip() + "\n\n"+data
-            else:
-                plain = data
-
-        log.debug("input for debug: %s", text)
-
-        html = markdown.markdown(plain)
+        data  = indent(4, pyaml.dump(rule, dst=unicode))+"\n"
+        plain = message.get('plain', '{message.text}\n{message.data}')
+        text  = message.get('text', '')
+        text  = rule.format(text, Config(kwargs))
+        plain = rule.format(plain, Config(kwargs), Config({'message': {'data': data, 'text': text}}))
+        html  = markdown.markdown(plain)
 
         return (text, data, plain, html)
 
@@ -368,7 +354,10 @@ class Alerter:
                 log.info("      notification subject %s", subject)
                 nspec['message.subject'] = subject
                 text, data, plain, html = self.compose_message_text(
-                    alert_data.get('message.text', ''), nspec, alert_data)
+                    alert_data.get('message', {}),
+                    alert_data,
+                    _ = alert_data.get('match_hit._source', {})
+                    )
 
                 nspec['message.text'] = text
 

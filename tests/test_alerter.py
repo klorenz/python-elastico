@@ -1,5 +1,5 @@
 import yaml, io, pyaml, re
-from textwrap import dedent
+from textwrap import dedent, indent
 from elastico.util import PY3, to_dt, dt_isoformat
 from elastico.alerter import Alerter
 from elastico.config import Config
@@ -767,4 +767,23 @@ def test_do_alert(monkeypatch):
  'notify': ['an-email'],
  'status': 'alert',
  'type': 'the_type'}
+
+def test_compose_message():
+    alerter = Alerter()
+
+    (text, data, plain, html) = alerter.compose_message_text(
+        {'text': 'hello {name.firstname}', 'plain': '{message.text}'},
+        Config({'name': {'firstname': 'Esmeralda'}}),
+    )
+
+    assert text == 'hello Esmeralda'
+    assert data == indent(dedent('''\
+        name:
+          firstname: Esmeralda
+
+        '''), " "*4)
+    assert plain == text
+    assert html == dedent('''\
+        <p>hello Esmeralda</p>''')
+
 
