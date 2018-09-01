@@ -30,7 +30,7 @@ setup(
 
     entry_points={
         'console_scripts': [
-            'elastico = elastico.cli:PYTHON_ARGCOMPLETE_OK',
+            'elastico = elastico.cli:main',
         ]
     }
 )
