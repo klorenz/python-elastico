@@ -16,7 +16,6 @@ def test_alerter_expand_rules():
     logging.getLogger().setLevel(logging.DEBUG)
 
     config = Config.object("""
-        foo: bar
         alerter:
             alert_defaults:
                 honey:
@@ -26,6 +25,7 @@ def test_alerter_expand_rules():
 
             rules:
               - name: foo
+                foo: bar
                 index: an_index
                 alerts:
                 - type: honey
@@ -37,8 +37,38 @@ def test_alerter_expand_rules():
     data = [x for x in Alerter.expand_rules(config)]
 
     assert data == [
-        {'a': 'a_value', 'key': 'foo', 'match': 'x', 'type': 'honey', 'index': 'an_index', 'name': 'foo'},
-        {'b': 'bar', 'key': 'foo', 'match': 'y', 'type': 'boney', 'index': 'an_index', 'name': 'foo'}
+        {'a': 'a_value', 'key': 'foo', 'foo': 'bar', 'match': 'x', 'type': 'honey', 'index': 'an_index', 'name': 'foo'},
+        {'b': 'bar', 'key': 'foo', 'foo': 'bar', 'match': 'y', 'type': 'boney', 'index': 'an_index', 'name': 'foo'}
+        ]
+
+def test_alerter_expand_rules():
+    import logging
+    logging.getLogger().setLevel(logging.DEBUG)
+
+    config = Config.object("""
+        alerter:
+            alert_defaults:
+                honey:
+                    a: a_value
+                boney:
+                    b: '{foo}'
+
+            rules:
+              - name: foo
+                foo: bar
+                index: an_index
+                alerts:
+                - type: honey
+                  match: x
+                - type: boney
+                  match: y
+    """)
+
+    data = [x for x in Alerter.expand_rules(config)]
+
+    assert data == [
+        {'a': 'a_value', 'key': 'foo', 'foo': 'bar', 'match': 'x', 'type': 'honey', 'index': 'an_index', 'name': 'foo'},
+        {'b': 'bar', 'key': 'foo', 'foo': 'bar', 'match': 'y', 'type': 'boney', 'index': 'an_index', 'name': 'foo'}
         ]
 
 def test_alerter_expand_rules_foreach():
@@ -118,11 +148,11 @@ def test_alerter_alert(monkeypatch):
         if rule['match'] == 'x':
             rule['match_hits_total'] = 4
             rule['match_hit'] = {'foo': 'bar'}
-            rule['match_hits'] = True
+            rule['alert_trigger'] = True
             return True
         if rule['match'] == 'y':
             rule['match_hits_total'] = 0
-            rule['match_hits'] = False
+            rule['alert_trigger'] = False
             return False
         return True
 
@@ -139,7 +169,7 @@ def test_alerter_alert(monkeypatch):
                 'status': 'ok',
                 '@timestamp': at_s,
                 'at': at_s,
-                'match_hits': False,
+                'alert_trigger': False,
                 'name': 'test',
                 'key': 'test',
                 'type': 'fatal',
@@ -155,7 +185,7 @@ def test_alerter_alert(monkeypatch):
                 'status': 'alert',
                 'notifications': {},
                 'match_hit': {'foo': 'bar'},
-                'match_hits': True,
+                'alert_trigger': True,
                 'key': 'test',
                 'type': 'warning',
                 'match': 'x',
@@ -185,11 +215,11 @@ def test_alerter_alert_elasticsearch(monkeypatch):
             if rule['match'] == 'x':
                 rule['match_hits_total'] = 4
                 rule['match_hit'] = {'foo': 'bar'}
-                rule['match_hits'] = True
+                rule['alert_trigger'] = True
                 return True
             if rule['match'] == 'y':
                 rule['match_hits_total'] = 0
-                rule['match_hits'] = False
+                rule['alert_trigger'] = False
                 return False
             return True
 
@@ -210,7 +240,7 @@ def test_alerter_alert_elasticsearch(monkeypatch):
                 'at': at_s,
                 'name': 'test',
                 'status': 'ok',
-                'match_hits': False,
+                'alert_trigger': False,
                 'key': 'test',
                 'type': 'fatal',
                 'match': 'y',
@@ -223,7 +253,7 @@ def test_alerter_alert_elasticsearch(monkeypatch):
                 'status': 'alert',
                 'notifications': {},
                 'match_hit': {'foo': 'bar'},
-                'match_hits': True,
+                'alert_trigger': True,
                 'key': 'test',
                 'type': 'warning',
                 'match': 'x',
@@ -255,11 +285,11 @@ def test_alerter_alert_filesystem(monkeypatch, tmpdir):
             if rule['match'] == 'x':
                 rule['match_hits_total'] = 4
                 rule['match_hit'] = {'foo': 'bar'}
-                rule['match_hits'] = True
+                rule['alert_trigger'] = True
                 return True
             if rule['match'] == 'y':
                 rule['match_hits_total'] = 0
-                rule['match_hits'] = False
+                rule['alert_trigger'] = False
                 return False
             return True
 
@@ -280,7 +310,7 @@ def test_alerter_alert_filesystem(monkeypatch, tmpdir):
                 'at': at_s,
                 'name': 'test',
                 'status': 'ok',
-                'match_hits': False,
+                'alert_trigger': False,
                 'key': 'test',
                 'type': 'fatal',
                 'match': 'y',
@@ -292,7 +322,7 @@ def test_alerter_alert_filesystem(monkeypatch, tmpdir):
                 'name': 'test',
                 'status': 'alert',
                 'match_hit': {'foo': 'bar'},
-                'match_hits': True,
+                'alert_trigger': True,
                 'key': 'test',
                 'type': 'warning',
                 'notifications': {},
@@ -311,6 +341,9 @@ def test_alerter_match():
 
     index  = "test-alerter-match"
     values = [ 20, 21, 19, 15, 12, 11, 4, 5, 6, 21, 22]
+    #      10: 00  01  02  03  04  05 06 07 08  09  10
+    # TEST1  ------------
+    # test2           ---------------------
 
     documents = [
         {
@@ -326,9 +359,8 @@ def test_alerter_match():
         success, failed = bulk(es, documents)
         assert len(failed) == 0, "error bulk importing test data"
         es.indices.refresh(index)
-        #assert False
 
-        alerter = Alerter(config = Config.object("""
+        _config = Config.object("""
             alerter:
                 rules:
                     - name: value-check
@@ -341,12 +373,32 @@ def test_alerter_match():
                         - type: warning
                           match: "value:[10 TO 13]"
                           index: test-alerter-match
-        """), es_client=es)
+        """)
 
+        alerter = Alerter(config =_config, es_client=es)
+
+        # no matches in timeframe after
         at = to_dt("2018-05-05 10:02:00")
         alerter.process_rules(at=at)
 
         at_s = dt_isoformat(at)
+
+        def _match_query(q, f, t):
+            return {
+                        'size': 1,
+                        'sort': [{'@timestamp': 'desc'}],
+                        'query': {
+                            'bool': {
+                                'must': [
+                                    {'range': {'@timestamp': {
+                                        'gte': '2018-05-05T%s:00Z' % f,
+                                        'lte': '2018-05-05T%s:00Z' % t,
+                                    }}},
+                                    {'query_string': {'query': q}},
+                                ]
+                            }
+                        },
+                    }
 
         assert alerter.STATUS == {
             'fatal': {
@@ -358,7 +410,8 @@ def test_alerter_match():
                     'index': 'test-alerter-match',
                     'key': 'value_check',
                     'match': 'value:[0 TO 10]',
-                    'match_hits': False,
+                    'match_query': _match_query('value:[0 TO 10]', '09:57', '10:02'),
+                    'alert_trigger': False,
                     'match_hits_total': 0,
                     'status': 'ok',
                     'type': 'fatal'
@@ -373,7 +426,8 @@ def test_alerter_match():
                     'index': 'test-alerter-match',
                     'key': 'value_check',
                     'match': 'value:[10 TO 13]',
-                    'match_hits': False,
+                    'match_query': _match_query('value:[10 TO 13]', '09:57', '10:02'),
+                    'alert_trigger': False,
                     'match_hits_total': 0,
                     'status': 'ok',
                     'type': 'warning'
@@ -381,6 +435,7 @@ def test_alerter_match():
             }
         }
 
+        alerter = Alerter(config =_config, es_client=es)
         at = to_dt("2018-05-05 10:07:00")
         alerter.process_rules(at=at)
         at_s = dt_isoformat(at)
@@ -395,6 +450,7 @@ def test_alerter_match():
                     'index': 'test-alerter-match',
                      'key': 'value_check',
                      'match': 'value:[0 TO 10]',
+                    'match_query': _match_query('value:[0 TO 10]', '10:02', '10:07'),
                     'notifications': {},
                      'match_hit': {
                          '_id': '7',
@@ -408,7 +464,7 @@ def test_alerter_match():
                          'sort': [1525514820000]
                      },
 
-                     'match_hits': True,
+                     'alert_trigger': True,
                      'match_hits_total': 2,
                      'status': 'alert',
                      'type': 'fatal'
@@ -424,6 +480,7 @@ def test_alerter_match():
                     'notifications': {},
                     'key': 'value_check',
                     'match': 'value:[10 TO 13]',
+                    'match_query': _match_query('value:[10 TO 13]', '10:02', '10:07'),
                     'match_hit': {
                         '_id': '5',
                         '_index': 'test-alerter-match',
@@ -435,7 +492,7 @@ def test_alerter_match():
                         '_type': 'doc',
                         'sort': [1525514700000]
                     },
-                    'match_hits': True,
+                    'alert_trigger': True,
                     'match_hits_total': 2,
                     'status': 'alert',
                     'type': 'warning'
@@ -464,6 +521,9 @@ def test_alerter_email(monkeypatch):
                   alerts:
                   - type: hummhomm
                     match: x
+                    message:
+                        text: >
+                            humm homm
                   - type: fatal
                     match: y
     """))
@@ -472,11 +532,11 @@ def test_alerter_email(monkeypatch):
         if rule['match'] == 'x':
             rule['match_hits_total'] = 4
             rule['match_hit'] = {'foo': 'bar'}
-            rule['match_hits'] = True
+            rule['alert_trigger'] = True
             return True
         if rule['match'] == 'y':
             rule['match_hits_total'] = 0
-            rule['match_hits'] = False
+            rule['alert_trigger'] = False
             return False
         return True
 
@@ -527,13 +587,18 @@ def test_alerter_email(monkeypatch):
             MIME-Version: 1.0
             Content-Transfer-Encoding: 7bit
 
+            humm homm
+
+                alert_trigger: true
                 at: 2018-05-05 10:07:00+00:00
                 key: test
                 match: x
                 match_hit:
                   foo: bar
-                match_hits: true
                 match_hits_total: 4
+                message:
+                  text: |
+                    humm homm
                 name: test
                 notify:
                   - email:
@@ -549,13 +614,17 @@ def test_alerter_email(monkeypatch):
             MIME-Version: 1.0
             Content-Transfer-Encoding: 7bit
 
-            <pre><code>at: 2018-05-05 10:07:00+00:00
+            <p>humm homm</p>
+            <pre><code>alert_trigger: true
+            at: 2018-05-05 10:07:00+00:00
             key: test
             match: x
             match_hit:
               foo: bar
-            match_hits: true
             match_hits_total: 4
+            message:
+              text: |
+                humm homm
             name: test
             notify:
               - email:
@@ -607,73 +676,95 @@ def test_alerter_command():
 
     pprint(alerter.STATUS, indent=2)
     assert alerter.STATUS == {
-        'hummhomm': {'test': {'@timestamp': '2018-05-05T10:07:00Z',
-                       'at': '2018-05-05T10:07:00Z',
-                       'command_succeeds': 'bash -c "exit 1"\n',
-                       'key': 'test',
-                       'name': 'test',
-                       'notify': ['sound'],
-                       'notifications': {'sound': {'at': at,
-                                   'command': "echo 'humm'",
-                                   'command_succeeds': 'bash -c "exit 1"\n',
-                                   'key': 'test',
-                                   'message': {'data': '    at: 2018-05-05 '
-                                                       '10:07:00+00:00\n'
-                                                       '    command_succeeds: '
-                                                       '|\n'
-                                                       '      bash -c "exit '
-                                                       '1"\n'
-                                                       '    key: test\n'
-                                                       '    name: test\n'
-                                                       '    notify:\n'
-                                                       "      - sound\n"
-                                                       '    result:\n'
-                                                       '      exit_code: 1\n'
-                                                       '    status: ok\n'
-                                                       '    type: hummhomm\n'
-                                                       '\n',
-                                               'html': '<pre><code>at: '
-                                                       '2018-05-05 '
-                                                       '10:07:00+00:00\n'
-                                                       'command_succeeds: |\n'
-                                                       '  bash -c "exit '
-                                                       '1"\n'
-                                                       'key: test\n'
-                                                       'name: test\n'
-                                                       'notify:\n'
-                                                       "  - sound\n"
-                                                       'result:\n'
-                                                       '  exit_code: 1\n'
-                                                       'status: ok\n'
-                                                       'type: hummhomm\n'
-                                                       '</code></pre>',
-                                               'plain': '    at: 2018-05-05 '
-                                                        '10:07:00+00:00\n'
-                                                        '    command_succeeds: |\n'
-                                                        '      bash -c "exit '
-                                                        '1"\n'
-                                                        '    key: test\n'
-                                                        '    name: test\n'
-                                                        '    notify:\n'
-                                                        '      - sound\n'
-                                                        '    result:\n'
-                                                        '      exit_code: 1\n'
-                                                        '    status: ok\n'
-                                                        '    type: hummhomm\n'
-                                                        '\n',
-                                       'subject': '[elastico] OK - '
-                                                          'hummhomm test'},
-                                   'name': 'test',
-                                   'notification': 'sound',
-                                   'notify': ['sound'],
-                                   'result': {'exit_code': 0,
-                                              'stdout': b'humm'},
-                                   'status': 'ok',
-                                   'stdout': True,
-                                   'transport': 'command',
-                                   'type': 'hummhomm'}},
-                       'result': {'exit_code': 1},
-                       'status': 'ok',
-                       'type': 'hummhomm'}}}
+      'hummhomm': { 'test': { '@timestamp': '2018-05-05T10:07:00Z',
+      'alert_trigger': True,
+      'at': '2018-05-05T10:07:00Z',
+      'command_succeeds': 'bash -c "exit 1"\n',
+      'key': 'test',
+      'name': 'test',
+      'notifications': { 'sound': { 'command': 'echo '
+                                               "'humm'",
+                                    'message': { 'subject': '[elastico] '
+                                                            'ALERT '
+                                                            '- '
+                                                            'hummhomm '
+                                                            'test',
+                                                 'text': ''},
+                                    'notification': 'sound',
+                                    'result': { 'exit_code': 0,
+                                                'stdout': b'humm'},
+                                    'status': 'ok',
+                                    'stdout': True,
+                                    'transport': 'command'}},
+      'notify': ['sound'],
+      'result': {'exit_code': 1},
+      'status': 'alert',
+      'type': 'hummhomm'}}}
 
+
+
+def test_do_alert(monkeypatch):
+    alerter = Alerter(config=Config.object({
+        'dry_run': True,
+        'alerter':{
+            'notifications': {
+                'an-email': {
+                    'transport': 'email',
+                    'email': {
+                        'to': 'a@b.c',
+                    }
+                }
+            }
+        }
+    }))
+    alert_data = Config({
+        'key': 'the_key',
+        'type': 'the_type',
+        'name': 'the_name',
+        'notify': [
+            'an-email'
+        ]
+    })
+    results = []
+    class MySMTP:
+        def connect(self, *args, **kwargs):
+            results.append(('connect', args, kwargs))
+        def login(self, *args, **kwargs):
+            results.append(('login', args, kwargs))
+        def sendmail(self, *args, **kwargs):
+            results.append(('sendmail', args, kwargs))
+        def quit(self, *args, **kwargs):
+            results.append(('quit', args, kwargs))
+
+    mysmtp = MySMTP
+
+    import smtplib
+    monkeypatch.setattr("smtplib.SMTP", mysmtp)
+
+    alerter.do_alert(alert_data)
+    pprint(alert_data)
+    pprint(results)
+    assert results[0] == ('connect', tuple(), {'host': 'localhost', 'port': 0})
+    assert results[1][0] == 'sendmail'
+        # have to check the other items
+    assert results[2] == ('quit', tuple(), dict())
+    assert alert_data == {
+        'email': {
+            'from': 'noreply',
+            'subject': '[elastico] ALERT - the_type the_name',
+            'to': 'a@b.c'},
+        'key': 'the_key',
+        'name': 'the_name',
+        'notifications': {
+            'an-email': {
+                'message': {
+                    'subject': '[elastico] ALERT - '
+                                'the_type the_name',
+                    'text': ''},
+                 'notification': 'an-email',
+                 'status': 'dry_run',
+                 'transport': 'email'}},
+ 'notify': ['an-email'],
+ 'status': 'alert',
+ 'type': 'the_type'}
 

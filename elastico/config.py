@@ -10,6 +10,7 @@ from argdeco import ConfigDict
 class Undefined:
     pass
 
+
 class Config(ConfigDict):
     @classmethod
     def object(cls, value=None, file=None):
@@ -22,7 +23,8 @@ class Config(ConfigDict):
                     value = value.decode('utf-8')
             value = yaml.load(io.StringIO(value))
 
-        cfg = cls(value)
+        cfg = cls()
+        cfg.update(value)
         cfg.set_filename(file)
         return cfg
 
@@ -80,9 +82,15 @@ class Config(ConfigDict):
         if name == '_files':
             self._files = set()
             return self._files
+        # try:
+        #     return self.format_value(self[name])
+        # except KeyError:
+        #     pass
         raise AttributeError(name)
 
     def __getitem__(self, name):
+        '''first look in self['arguments'] for finding a value.
+        '''
 #        log.debug("__getitem__: %s", name)
 
         try:
@@ -100,31 +108,11 @@ class Config(ConfigDict):
                 result = super(Config, self).__getitem__(name)
         return result
 
-        #return self.format_value(result)
-
-    # def __setitem__(self, name):
-    #     arguments = super(Config, self).__getitem__(self, 'arguments')
-    #     if name in argumetns
-#        f
-
-
     def get(self, name, default=None):
-        log.debug("get name=%s", name)
-
-        if isinstance(default, dict):
-            default = Config.object(default, file=self._file)
-
         try:
-            result = self[name]
+            return self[name]
         except KeyError:
             return default
-
-        result = self.format_value(result)
-
-        if isinstance(result, dict):
-            return Config.object(result, file=self._file)
-
-        return result
 
     def update_from_includes(self):
         log.debug("update_from_includes starts: %s", self._file)
@@ -288,24 +276,39 @@ class Config(ConfigDict):
         return self
 
 
-    def format_value(self, current=Undefined):
+    def getval(self, name, default=None):
+        return self.format(self.get(name, default))
+
+
+    def format(self, current=Undefined, *data):
         if current is Undefined:
             current = self
 
         if isinstance(current, string):
-            try:
-                result = current.format(**self)
-            except KeyError:
+            if '{' not in current:
                 result = current
+            else:
+                try:
+                    _data = self
+                    if data:
+                        _data = {}
+                        _data.update(self)
+
+                        for d in data:
+                            _data.update(d)
+
+                    result = current.format(**_data)
+                except KeyError:
+                    result = current
             log.debug("format_value result=%s", result)
 
         elif isinstance(current, (list, tuple)):
-            result = [self.format_value(v) for v in current]
+            result = [self.format(v) for v in current]
 
         elif isinstance(current, dict):
             result = {}
             for k,v in current.items():
-                result[k] = self.format_value(v)
+                result[k] = self.format(v, *(list(data)+[current]))
         else:
             result = current
 

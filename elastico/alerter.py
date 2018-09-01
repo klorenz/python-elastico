@@ -69,6 +69,12 @@ class Alerter:
 
         if storage_type == 'elasticsearch':
             index = self.get_status_storage_index()
+            #_rule = Config.object(rule).format_value()
+            if 'match' in rule and not isinstance(rule['match'], string):
+                rule['match'] = json.dumps(rule['match'])
+            if 'match_query' in rule and not isinstance(rule['match_query'], string):
+                rule['match_query'] = json.dumps(rule['match_query'])
+
             result = self.es.index(index=index, doc_type="elastico_alert_status", body=rule)
             self.es.indices.refresh(index)
             log.debug("index result: %s", result)
@@ -113,7 +119,17 @@ class Alerter:
             })
 
             if results['hits']['total']:
-                return results['hits']['hits'][0]['_source']
+                result = results['hits']['hits'][0]['_source']
+                if 'match' in result:
+                    try:
+                        result['match'] = json.loads(result['match'])
+                    except:
+                        pass
+                if 'match_query' in result:
+                    try:
+                        result['match_query'] = json.loads(result['match_query'])
+                    except:
+                        pass
             else:
                 return None
 
@@ -127,42 +143,62 @@ class Alerter:
         elif storage_type == 'memory':
             return self.STATUS.get(type, {}).get(key)
 
-    def compose_message_text(self, alert, rule):
-        if 'message.plain' not in alert:
-            import markdown
-            data = indent(4, pyaml.dump(rule, dst=unicode))+"\n"
-            alert['message.data'] = data
+    def compose_message_text(self, text, alert, rule):
+        '''compose message text from text with data from alert and rule
 
-            text = alert.get('message.text', '')
-            if alert.get('message.type') != 'text_only':
-                if text.strip():
-                    text = text.rstrip() + "\n\n"+data
-                else:
-                    text = data
+        '''
+        import markdown
+        data = indent(4, pyaml.dump(rule, dst=unicode))+"\n"
 
-            log.debug("input for debug: %s", text)
+        log.info("alertdata: %s", alert)
 
-            html = markdown.markdown(text)
+        text = text.format(
+            _    = alert.get('match_hit._source', {}),
+            rule = rule,
+            **alert)
 
-            alert['message.plain'] = text
-            alert['message.html'] = html
+        plain = text
 
-        return alert['message.plain'], alert['message.html']
+        if alert.get('message.type') != 'text_only':
+            if plain.strip():
+                plain = plain.rstrip() + "\n\n"+data
+            else:
+                plain = data
 
-    def notify_command(self, alert, rule, all_clear=None):
+        log.debug("input for debug: %s", text)
+
+        html = markdown.markdown(plain)
+
+        return (text, data, plain, html)
+
+    def notify_command(self, message, alert, rule, all_clear=None):
         cmd = alert.get('command')
+        cmd = alert.format(cmd, message)
+
         if not rule.get('dry_run'):
             (result, stdout, stderr) = self.do_some_command(cmd, alert)
 
-    def notify_email(self, alert, rule, all_clear=None):
-        smtp_host    = alert.get('smtp.host', 'localhost')
-        smtp_ssl     = alert.get('smtp.ssl', False)
-        smtp_port    = alert.get('smtp.port', 0)
+    def notify_email(self, message, alert, rule, all_clear=None):
 
-        email_from   = alert.get('email.from', 'noreply')
-        email_cc     = alert.get('email.cc', [])
-        email_to     = alert.get('email.to', [])
-        email_bcc    = alert.get('email.bcc', [])
+        log.debug('alert: %s', alert)
+
+        def _get(name, default=None):
+            if name in alert:
+                return alert[name]
+            if name in rule:
+                return rule[name]
+            if name in self.config:
+                return self.config[name]
+            return default
+
+        smtp_host    = _get('smtp.host', 'localhost')
+        smtp_ssl     = _get('smtp.ssl', False)
+        smtp_port    = _get('smtp.port', 0)
+
+        email_from   = _get('email.from', 'noreply')
+        email_cc     = _get('email.cc', [])
+        email_to     = _get('email.to', [])
+        email_bcc    = _get('email.bcc', [])
 
         log.debug("alert_email(): %s", alert)
 
@@ -173,6 +209,8 @@ class Alerter:
         if not isinstance(email_bcc, list): email_bcc = [email_bcc]
 
         recipients = email_to + email_cc + email_bcc
+
+        assert recipients, "you must specify email recipient"
 
         from email.mime.multipart import MIMEMultipart
         from email.mime.text import MIMEText
@@ -190,7 +228,7 @@ class Alerter:
             rule['email.%s' % key.lower()] = msg[key]
 
         _set_email_header('From', email_from)
-        _set_email_header('Subject', alert['message.subject'])
+        _set_email_header('Subject', message['subject'])
         _set_email_header('To', email_to)
 
         if email_cc:
@@ -200,8 +238,8 @@ class Alerter:
         recipients = email_to + email_cc + email_bcc
 
         # Record the MIME types of both parts - text/plain and text/html.
-        part1 = MIMEText(alert['message.plain'], 'plain')
-        part2 = MIMEText(alert['message.html'], 'html')
+        part1 = MIMEText(message['plain'], 'plain')
+        part2 = MIMEText(message['html'], 'html')
 
         # Attach parts into message container.
         # According to RFC 2046, the last part of a multipart message, in this case
@@ -212,8 +250,8 @@ class Alerter:
         email_message = msg.as_string()
 
         log.info("Send email alert: smtp_host=%s, smtp_port=%s, smtp_ssl=%s", smtp_host, smtp_port, smtp_ssl)
-        log.info("alert_email: Text: %s", alert['message.plain'])
-        log.info("alert_email: HTML: %s", alert['message.html'])
+        log.info("alert_email: Text: %s", message['plain'])
+        log.info("alert_email: HTML: %s", message['html'])
 
         if not rule.get('dry_run'):
             result = self.email_sendmail(
@@ -238,7 +276,7 @@ class Alerter:
                 raise NotificationError("Some recipients had errors", result)
 
 
-    def email_sendmail(host='localhost', port=0, use_ssl=False,
+    def email_sendmail(self, host='localhost', port=0, use_ssl=False,
         username=None, password=None,
         sender=None, recipients=[], message=''):
 
@@ -248,34 +286,22 @@ class Alerter:
             from smtplib import SMTP
 
         smtp = SMTP()
-        smtp.connect(host=smtp_host, port=smtp_port)
+        smtp.connect(host=host, port=port)
         # if user and password are given, use them to smtp.login(user, pass)
         if username is not None:
             smtp.login(username, password)
 
-        result = smtp.sendmail(from_address, recipients, email_message)
+        result = smtp.sendmail(sender, recipients, message)
         smtp.quit()
         return result
 
-
-    def do_alert(self, rule, all_clear=False):
-        log.info("do alert for: %s %s", rule.__class__.__name__, rule)
-
-        if all_clear:
-            rule['status'] = 'ok'
-        else:
-            rule['status'] = 'alert'
-
-        key = rule.get('key')
-        type = rule.get('type')
-
-        log.info('Alert (%s): %s has status %s', type, key, rule['status'])
-
+    def get_notifications(self, alert_data):
+        # get the list of notification_specs
         notification_specs = self.config.get('alerter.notifications', {})
         log.info("notification_specs: %s", notification_specs)
 
         notifications = {}
-        _notify = rule.get('notify', [])
+        _notify = alert_data.get('notify', [])
         if isinstance(_notify, dict):
             _tmp = []
             for k,v in _notify.items():
@@ -284,48 +310,89 @@ class Alerter:
                 _tmp.append(_notification)
             _notify = _tmp
 
-        for notification in _notify:
-            try:
-                alert = Config.object(rule)
+        return _notify
 
-                if isinstance(notification, string):
-                    alert.update(deepcopy(notification_specs[notification]))
-                    alert['notification'] = notification
+
+    def do_alert(self, alert_data, all_clear=False):
+        '''Use alert data to create a notification and transport it via
+        given transport'''
+
+        assert isinstance(alert_data, Config), "given alert data must be Config instance"
+
+        log.info("do alert for: %s %s", alert_data.__class__.__name__, alert_data)
+
+        # set future status
+        if all_clear:
+            alert_data['status'] = 'ok'
+        else:
+            alert_data['status'] = 'alert'
+
+        # key and type must be present
+        key = alert_data['key']
+        type = alert_data['type']
+        name = alert_data['name']
+        log.info('Alert (%s): %s has status %s', type, key, alert_data['status'])
+
+        # get the list of notification_specs
+        notification_specs = self.config.get('alerter.notifications', {})
+        log.info("notification_specs: %s", notification_specs)
+
+        notifications = {}
+
+        _notify = self.get_notifications(alert_data)
+
+        for notify_name in _notify:
+            try:
+                #alert = Config.object(alert_data)
+                nspec = Config.object()
+
+                if isinstance(notify_name, string):
+                    nspec.update(deepcopy(notification_specs[notify_name]))
+                    nspec['notification'] = notify_name
 
                 else:
-                    alert.update(deepcopy(notification))
-                    notification = alert['notification']
+                    nspec.update(deepcopy(notify_name))
+                    notify_name = nspec['notification']
 
-                log.info("process notification %s %s", alert.__class__.__name__, alert)
-
-                name = rule.get('name')
-                type = rule.get('type')
-                key  = rule.get('key')
+                log.info("process notification %s %s", nspec.__class__.__name__, nspec)
 
                 if all_clear:
-                    subject = rule.get('subject.ok', '')
+                    subject = alert_data.get('subject.ok', '')
                 else:
-                    subject = rule.get('subject.alert', '')
+                    subject = alert_data.get('subject.alert', '')
 
                 if not subject:
-                    status = rule['status'].upper()
+                    status  = alert_data['status'].upper()
                     subject = '[elastico] {} - {} {}'.format(status, type, name)
 
-                alert['message.subject'] = subject
-                self.compose_message_text(alert, rule)
+                log.info("      notification subject %s", subject)
+                nspec['message.subject'] = subject
+                text, data, plain, html = self.compose_message_text(
+                    alert_data.get('message.text', ''), nspec, alert_data)
 
-                getattr(self, 'notify_'+alert['transport'])(alert, rule, all_clear)
+                nspec['message.text'] = text
+
+                message = {
+                    'text': text,
+                    'data': data,
+                    'plain': plain,
+                    'html': html,
+                    'subject': subject,
+                }
+
+                getattr(self, 'notify_'+nspec['transport'])(message, nspec, alert_data, all_clear)
 
                 if self.config.get('dry_run'):
-                    alert['status'] = 'dry_run'
+                    nspec['status'] = 'dry_run'
                 else:
-                    alert['status'] = 'ok'
+                    nspec['status'] = 'ok'
 
-                notifications[notification] = alert.format_value()
+                notifications[notify_name] = alert_data.format(nspec)
+
             except Exception as e:
-                log.error('Error while processing notification %s', notification, exc_info=1)
+                log.error('Error while processing notification %s', notify_name, exc_info=1)
 
-                rule['status'] = 'error'
+                nspec['status'] = 'error'
 
                 args = e.args[1:]
                 if len(args) > 1:
@@ -340,26 +407,29 @@ class Alerter:
                 else:
                     message = e.__class__.__name__+"("+str(e)+")"
 
-                alert['error'] = {
-                    'message': e.message,
+                log.error("      notification error %s", message)
+                nspec['error'] = {
+                    'message': message,
                     'details': details,
                 }
 
-                log.debug('alert[error]: %s', alert['error'])
+                log.debug('nspec[error]: %s', nspec['error'])
 
-        rule['notifications'] = _n = {}
+            log.info("      notification %s -> %s", notify_name, nspec['status'])
+
+        alert_data['notifications'] = _n = {}
         for n_name,notification in notifications.items():
             _n[n_name] = {}
             for k,v in notification.items():
-                if k not in rule or k in ('status', 'error', 'result'):
+                if k not in alert_data or k in ('status', 'error', 'result'):
                     _n[n_name][k] = v
 
             # we do not need plain as composition of text and data
             # we do not need data (as in rule)
             # we do not need to store the HTML text
-            del _n[n_name]['message']['plain']
-            del _n[n_name]['message']['html']
-            del _n[n_name]['message']['data']
+            # del _n[n_name]['message']['plain']
+            # del _n[n_name]['message']['html']
+            # del _n[n_name]['message']['data']
 
 
     def get_query(self, rule, name):
@@ -414,18 +484,26 @@ class Alerter:
         log.debug("results: %s", results)
         rule['match_hits_total'] = results['hits']['total']
         if rule['match_hits_total']:
-            rule['match_hit'] = results['hits']['hits'][0]
+            rule['match_hit'] = Config.object(results['hits']['hits'][0])
 
+        # there should be at least min_matches
         min_total = rule.get('matches_min')
+        # there should be at most max_matches
         max_total = rule.get('matches_max')
-        if min_total is None and max_total is None:
-            min_total = 1
+        # ... otherwise we will alert
 
+        if min_total is None and max_total is None:
+            max_total = 0
+
+        # first check if totals are within given bounds
         _result = True
         if min_total is not None:
             _result = _result and results['hits']['total'] >= min_total
         if max_total is not None:
             _result = _result and results['hits']['total'] <= max_total
+
+        # then invert the result
+        _result = not _result
 
         rule['alert_trigger'] = _result
         return _result
@@ -433,8 +511,11 @@ class Alerter:
 
     def do_some_command(self, kwargs, rule=None):
         log.debug("do_some_command: kwargs=%s, rule=%s", kwargs, rule)
+
         if isinstance(kwargs, string):
             kwargs = {'args': kwargs, 'shell': True}
+        elif isinstance(kwargs, (list, tuple)):
+            kwargs = {'args': kwargs}
 
         def _get_capture_value(name):
             if name in kwargs:
@@ -454,6 +535,7 @@ class Alerter:
         else:
             input = None
 
+        log.info("run_command: kwargs=%s", kwargs)
         p = Popen(stdout=PIPE, stderr=PIPE, **kwargs)
         (stdout, stderr) = p.communicate(input)
         result = p.wait()
@@ -473,70 +555,78 @@ class Alerter:
 
         return (result, stdout, stderr)
 
-    def do_command_succeeds(self, alert_rule):
-        cmd = alert_rule.get('command_succeeds')
-        (result, stdout, stderr) = self.do_some_command(cmd, alert_rule)
+    def do_command_succeeds(self, alert_data):
+        cmd = alert_data.get('command_succeeds')
+        (result, stdout, stderr) = self.do_some_command(cmd, alert_data)
 
-        _result = result == alert_rule.get('expect.code', 0)
-        rule['alert_trigger'] = _result
+        _result = not (result == alert_data.get('expect.code', 0))
+        alert_data['alert_trigger'] = _result
         return _result
 
-    def do_command_fails(self, alert_rule):
-        cmd = alert_rule.get('command_fails')
-        (result, stdout, stderr) = self.do_some_command(cmd, alert_rule)
+    def do_command_fails(self, alert_data):
+        cmd = alert_data.get('command_fails')
+        (result, stdout, stderr) = self.do_some_command(cmd, alert_data)
 
-        _result = result != alert_rule.get('expect.code', 0)
-        rule['alert_trigger'] = _result
+        _result = not (result != alert_data.get('expect.code', 0))
+        alert_data['alert_trigger'] = _result
         return _result
 
-    def check_alert(self, rule, status=None):
+    def check_alert(self, alert_data, status=None):
         if status is None:
-            # get last status of this rule
+            # get last status of this alert_data
             try:
-                last_rule = self.read_status(rule)
+                last_rule = self.read_status(alert_data)
 
                 if last_rule is not None:
                     status = last_rule['status']
             except:
-                log.warning("could not read status from last run of rule %s for type %s", rule['key'], rule['type'])
+                log.warning("could not read status from last run of alert_data %s for type %s", alert_data['key'], alert_data['type'])
 
         if status is None:
-            rule['status'] = 'ok'
+            alert_data['status'] = 'ok'
         else:
-            rule['status'] = status
+            alert_data['status'] = status
 
         need_alert = False
-        if 'command_fails' in rule:
-            need_alert = need_alert or self.do_command_fails(rule)
+        if 'command_fails' in alert_data:
+            need_alert = need_alert or self.do_command_fails(alert_data)
 
-        if 'command_succeeds' in rule:
-            need_alert = need_alert or self.do_command_succeeds(rule)
+        if 'command_succeeds' in alert_data:
+            need_alert = need_alert or self.do_command_succeeds(alert_data)
 
-        if 'match' in rule:
-            need_alert = self.do_match(rule)
+        if 'match' in alert_data:
+            need_alert = self.do_match(alert_data)
 
         if need_alert:
             # new status = alert
             if status == 'alert' and last_rule:
-                 delta = timedelta(**rule.get('realert', {'minutes': 60}))
-                 if to_dt(last_rule['@timestamp']) < to_dt(datetime.utcnow()):
-                     rule['status'] = 'wait-realert'
-                     return rule
+                 delta = timedelta(**alert_data.get('realert', {'minutes': 60}))
+                 wait_time = delta - ( to_dt(datetime.utcnow()) -
+                    to_dt(last_rule['@timestamp']) )
 
-            self.do_alert(rule)
+                 if wait_time > timedelta(0):
+                     alert_data['status'] = 'wait-realert'
+                     log.info("      trigger alert -> wait for realert (%s)", wait_time)
+                     return alert_data
+
+            log.info("      trigger alert")
+            self.do_alert(alert_data)
 
         else:
             if status == 'alert':
-                self.do_alert(rule, all_clear=last_rule)
+                log.info("      trigger ok")
+                self.do_alert(alert_data, all_clear=last_rule)
+            else:
+                log.info("      trigger nothing")
 
-        if not rule.get('dry_run'):
-            self.write_status(rule)
+        if not alert_data.get('dry_run'):
+            self.write_status(alert_data)
 
         # here we can expand everything
 
         # check result and log
 
-        return rule
+        return alert_data
 
     def process_rules(self, action=None, **arguments):
         if 'arguments' not in self.config:
@@ -545,24 +635,39 @@ class Alerter:
         self.config['arguments'].update(arguments)
 
         for rule in self.config.get('alerter.rules', []):
+
             if not rule: continue
+            rule = self.config.assimilate(rule)
+            # TODO: why is assimilate needed here?  should already be done
+
+            _class_name = rule.getval('class')
+            if _class_name is None:
+                _class_name = rule.getval('name')
 
             log.debug("rule: %s", rule)
-            log.info("=== RULE <%s> =========================", rule.get('class', rule.get('name')))
+            log.info("=== RULE <%s> =========================", _class_name)
 
-            self.process(Config.object(rule), action=action)
+            self.process(rule, action=action)
 
     ALIAS = re.compile(r"^\s*\*(\w+)(\.\w+)*(\s+\*(\w+)(\.\w+)*)*\s*$")
     def process(self, rule, action=None):
+
         has_foreach = False
+
         # create a product of all items in 'each' to multiply the rule
         if 'foreach' in rule:
             data_list = []
 
             for key,val in rule.get('foreach', {}).items():
                 log.debug("key: %s, val: %s", key, val)
+
+                # maybe format the values
+                key = rule.format(key)
+
                 # expand *foo.bar values.
                 if isinstance(val, string):
+                    val = rule.format(val)
+
                     log.debug("val is aliases candidate")
                     _value = []
                     if self.ALIAS.match(val):
@@ -583,7 +688,7 @@ class Alerter:
                         log.debug("no aliases: %s", val)
 
                 #if val == '@'
-                data_list.append([{key: v} for v in val])
+                data_list.append([{key: rule.format(v)} for v in val])
 
             data_sets = product(*data_list)
 
@@ -594,11 +699,25 @@ class Alerter:
 
         visited_keys = []
 
+
         for data_set in data_sets:
             log.debug("data_set: %s", data_set)
 
-            # get arguments
-            r = Config.object(deepcopy(self.config.get('arguments', {})))
+            r = Config.object()
+
+            # # copy config's data section
+            # r.update(deepcopy(self.config.get('data', {})))
+            #
+            # # copy alerter's data section
+            # r.update(deepcopy(self.config.get('alerter.data', {})))
+
+            # copy arguments
+            r.update(deepcopy(self.config.get('arguments', {})))
+
+            # for k,v in self.config.items():
+            #     if k.endswith('_defaults'): continue
+            #     if k in ('arguments', 'alerter', 'digester'): continue
+            #     r[k] = deepcopy(v)
 
             # get defaults
             defaults = self.config.get('alerter.rule_defaults', {})
@@ -611,68 +730,74 @@ class Alerter:
             r.update(deepcopy(_defaults))
 
             # update data from rule
-            r.update(rule.format_value())
-
-            if 'foreach' in r:
-                del r['foreach']
-            _alerts = r.get('alerts', [])
-            if 'alerts' in r:
-                del r['alerts']
+            r.update(deepcopy(rule))
 
             for data in data_set:
                 r.update(deepcopy(data))
 
+            _name = r.getval('name')
+
+            # overrides from arguments
+            r.update(self.config.get('alerter.rule.%s', {}))
+
             log.info("--- rule %s", r.get('name'))
+
+            _alerts = r.get('alerts', [])
 
             if isinstance(_alerts, dict):
                 _tmp = []
                 for k,v in _alerts.items():
-                    _value = Config.object({'type':k})
+                    _value = Config.object({'type': r.format(k)})
                     _value.update(deepcopy(v))
                     _tmp.append(_value)
                 _alerts = _tmp
 
             for alert in _alerts:
                 log.debug("process alert %s", alert)
-                alert_rule = Config.object()
+                alert_data = Config.object()
 
                 assert 'type' in alert
 
+                _type = alert_data.format(alert['type'])
+
                 defaults = self.config.get('alerter.alert_defaults', {})
-                alert_rule.update(deepcopy(defaults.get(alert.get('type'),{})))
+                alert_data.update(deepcopy(defaults.get(_type,{})))
 
-                defaults = rule.get('alert_defaults', {})
-                alert_rule.update(deepcopy(defaults.get(alert.get('type'),{})))
+                defaults = r.get('alert_defaults', {})
+                alert_data.update(deepcopy(defaults.get(_type,{})))
 
-                alert_rule.update(r.format_value())
+                alert_data.update(r)
 
-                if hasattr(alert, 'format_value'):
-                    alert_rule.update(alert.format_value())
-                else:
-                    alert_rule.update(alert)
+                alert_data.update(alert)
 
-                log.debug("alert_rule (alert): %s", alert_rule)
+                if 'alerts' in alert_data:
+                    del alert_data['alerts']
 
-                if 'key' not in alert_rule:
-                    alert_rule['key'] = re.sub(r'[^\w]+', '_', r.get('name').lower())
+                log.debug("alert_data (alert): %s", alert_data)
 
-                log.info("----- alert %s-%s", alert_rule['type'], alert_rule['key'])
+                _r_name = r.getval('name')
 
-                visit_key = (alert_rule.get('key'), alert_rule.get('type'))
+                if 'key' not in alert_data:
+                    alert_data['key'] = re.sub(r'[^\w]+', '_', _r_name.lower())
+
+                _key = alert_data.getval('key')
+
+                log.info("----- alert %s-%s?", _type, _key)
+
+                visit_key = (_type, _key)
                 assert visit_key not in visited_keys, \
-                    "key %s already used in rule %s" \
-                    % (alert_rule.get('key'), r.get('name'))
+                    "key %s already used in rule %s" % (_key, _r_name)
 
-                assert 'match' in alert_rule or 'no_match' in alert_rule \
-                    or 'command_succeeds' in alert_rule \
-                    or 'command_fails' in alert_rule
+                assert 'match' in alert_data or 'no_match' in alert_data \
+                    or 'command_succeeds' in alert_data \
+                    or 'command_fails' in alert_data
 
-                log.debug("alert_rule: %s", alert_rule)
+                log.debug("alert_data: %s", alert_data)
 
                 if action:
-                    action(alert_rule.format_value())
+                    action(alert_data)
                 else:
-                    self.check_alert(alert_rule.format_value())
+                    self.check_alert(alert_data)
 
             if not _alerts:
                 action(rule)
@@ -703,9 +828,11 @@ class Alerter:
         '''
         RULES = []
         def collect_rules(rule):
-            RULES.append(rule)
+            RULES.append(rule.format())
             return rule
 
         Alerter(None, config).process_rules(action=collect_rules)
         return RULES
 
+# TODO: have to refactor Config, such that formatting is not done implicitely
+# TODO: need a formatter, which can work with dict + defaults, and this formatter must be used in new Config

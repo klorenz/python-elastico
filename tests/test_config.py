@@ -8,10 +8,10 @@ def test_config():
     assert cfg.get('foo') == 'bar'
     assert cfg.get('x.a') == 'b'
 
-def test_format_value():
-    assert Config({"a": "b"}).format_value("{a}") == "b"
-    assert Config({"a": "b"}).format_value({"x": "{a}"}) == {"x": "b"}
-    assert Config({"a": "b"}).format_value(["{a}", "c"]) == ["b", "c"]
+def test_format():
+    assert Config({"a": "b"}).format("{a}") == "b"
+    assert Config({"a": "b"}).format({"x": "{a}"}) == {"x": "b"}
+    assert Config({"a": "b"}).format(["{a}", "c"]) == ["b", "c"]
 
 def test_read_config_dir(tmpdir):
     tmpdir.join("f1.yml").write(dedent("""

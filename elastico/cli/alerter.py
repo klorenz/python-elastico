@@ -13,7 +13,7 @@ from ..alerter import Alerter
 from ..connection import elasticsearch
 from ..util import write_output
 
-import pyaml, logging
+import pyaml, logging, time
 logger = logging.getLogger('elastico.cli.alerter')
 
 alerter_command = command.add_subcommands('alerter', description=__doc__)
@@ -89,10 +89,10 @@ def alerter_serve(config):
 
     counter = 0
     while True:
-        _config = config.refresh()
-        count = _config['alerter.serve.count']
-        sleep_seconds = _config['alerter.serve.sleep_seconds']
-        alerter = Alerter(elasticsearch(_config), _config)
+        config.refresh()
+        count = config['alerter.serve.count']
+        sleep_seconds = config['alerter.serve.sleep_seconds']
+        alerter = Alerter(elasticsearch(config), config)
 
         if count > 0:
             if counter >= count:
