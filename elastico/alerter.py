@@ -42,6 +42,7 @@ class Alerter:
         self.es = es_client
         self.config = config
         self.STATUS = {}
+        self.status_index_dirty = False
 
     def wipe_status_storage(self):
         '''remove all status storages'''
@@ -52,6 +53,10 @@ class Alerter:
     def get_status_storage_index(self):
         date = to_dt(self.config['at'])
         return date.strftime('elastico-alert-%Y-%m-%d')
+
+    def refresh_status_storage_index(self):
+        if self.es:
+            self.es.indices.refresh(self.get_status_storage_index())
 
     def write_status(self, rule):
         storage_type = self.config.get('alerter.status_storage', 'memory')
@@ -76,8 +81,9 @@ class Alerter:
                 rule['match_query'] = json.dumps(rule['match_query'])
 
             result = self.es.index(index=index, doc_type="elastico_alert_status", body=rule)
-            self.es.indices.refresh(index)
+            #self.es.indices.refresh(index)
             log.debug("index result: %s", result)
+            self.status_index_dirty = True
 
         elif storage_type == 'filesystem':
             storage_path = self.config.get('alerter.status_storage_path', '')
@@ -109,6 +115,9 @@ class Alerter:
             type = rule.get('type')
 
         if storage_type == 'elasticsearch':
+            if self.status_index_dirty:
+                self.refresh_status_storage_index()
+
             results = self.es.search(index="elastico-alerter-*", body={
                 'query': {'bool': {'must': [
                     {'term': {'key': key}},
@@ -149,6 +158,7 @@ class Alerter:
         '''
         import markdown
         data  = indent(4, pyaml.dump(rule, dst=unicode))+"\n"
+        #if message
         plain = message.get('plain', '{message.text}\n{message.data}')
         text  = message.get('text', '')
         text  = rule.format(text, Config(kwargs))
@@ -379,7 +389,7 @@ class Alerter:
                 notifications[notify_name] = alert_data.format(nspec)
 
             except Exception as e:
-                log.error('Error while processing notification %s', notify_name, exc_info=1)
+                # log.error('Error while processing notification %s: %s', notify_name, e)
 
                 nspec['status'] = 'error'
 
@@ -412,6 +422,8 @@ class Alerter:
             for k,v in notification.items():
                 if k not in alert_data or k in ('status', 'error', 'result'):
                     _n[n_name][k] = v
+
+        log.warning("Done notifications: %s", alert_data)
 
             # we do not need plain as composition of text and data
             # we do not need data (as in rule)
@@ -587,6 +599,7 @@ class Alerter:
             need_alert = self.do_match(alert_data)
 
         if need_alert:
+            log.warning("need alert: %s", alert_data['name'])
             # new status = alert
             if status == 'alert' and last_rule:
                  delta = timedelta(**alert_data.get('realert', {'minutes': 60}))
@@ -595,7 +608,7 @@ class Alerter:
 
                  if wait_time > timedelta(0):
                      alert_data['status'] = 'wait-realert'
-                     log.info("      trigger alert -> wait for realert (%s)", wait_time)
+                     log.warning("      trigger alert -> wait for realert (%s)", wait_time)
                      return alert_data
 
             log.info("      trigger alert")
@@ -622,10 +635,17 @@ class Alerter:
             self.config['arguments'] = {}
 
         self.config['arguments'].update(arguments)
+        rules = self.config.get('alerter.rules', [])
+        log.debug("rules: %s", rules)
 
-        for rule in self.config.get('alerter.rules', []):
-
+        for rule in rules:
             if not rule: continue
+
+            log.debug("rule: %s", rule)
+
+            if isinstance(rule, string):
+                rule = rules[rule]
+
             rule = self.config.assimilate(rule)
             # TODO: why is assimilate needed here?  should already be done
 
@@ -637,6 +657,9 @@ class Alerter:
             log.info("=== RULE <%s> =========================", _class_name)
 
             self.process(rule, action=action)
+
+        if self.es:
+            self.refresh_status_storage_index()
 
     ALIAS = re.compile(r"^\s*\*(\w+)(\.\w+)*(\s+\*(\w+)(\.\w+)*)*\s*$")
     def process(self, rule, action=None):
@@ -807,7 +830,7 @@ class Alerter:
                     alerter.process_rules()
                     time.sleep(sleep_seconds)
                 except Exception as e:
-                    log.error("exception occured while processing rules", exc_info=1)
+                    log.error("exception occured while processing rules: %s", e)
         else:
             alerter.process_rules()
 
