@@ -9,3 +9,4 @@ venv
 /config
 /MANIFEST
 /docs/_build
+/dist
