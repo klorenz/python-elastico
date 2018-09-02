@@ -66,11 +66,12 @@ class Server:
                 if error_count > 10:
                     subject = '[elastico] too many errors, giving up' % error_count
 
-                notifier.notify(notify=notify, Config({
+                notifier.notify(notify=notify, data=Config({
                     'message': {
-                        'subject': subject
+                        'subject': subject,
                         'text': "error_count=%s\n\n" % error_count +
                             traceback.format_exc()
+                    }
                 }))
 
                 if error_count > 10:

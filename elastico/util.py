@@ -5,9 +5,11 @@ from subprocess import Popen, PIPE
 if (sys.version_info > (3, 0)):
     PY3 = True
     string = str
+
 else:
     PY3 = False
     string = basestring
+    Exception = StandardError
 
 import logging
 log = logging.getLogger('elastico.util')
