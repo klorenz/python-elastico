@@ -7,6 +7,7 @@ from dateutil.parser import parse as dt_parse
 from itertools import product
 from subprocess import Popen, PIPE
 from copy import deepcopy
+from .notifier import Notifier
 
 #from ..config import Config
 
@@ -56,7 +57,10 @@ class Alerter:
 
     def refresh_status_storage_index(self):
         if self.es:
-            self.es.indices.refresh(self.get_status_storage_index())
+            try:
+                self.es.indices.refresh(self.get_status_storage_index())
+            except:
+                pass
 
     def write_status(self, rule):
         storage_type = self.config.get('alerter.status_storage', 'memory')
@@ -174,128 +178,11 @@ class Alerter:
         if not rule.get('dry_run'):
             (result, stdout, stderr) = self.do_some_command(cmd, alert)
 
-    def notify_email(self, message, alert, rule, all_clear=None):
-
-        log.debug('alert: %s', alert)
-
-        def _get(name, default=None):
-            if name in alert:
-                return alert[name]
-            if name in rule:
-                return rule[name]
-            if name in self.config:
-                return self.config[name]
-            return default
-
-        smtp_host    = _get('smtp.host', 'localhost')
-        smtp_ssl     = _get('smtp.ssl', False)
-        smtp_port    = _get('smtp.port', 0)
-
-        email_from   = _get('email.from', 'noreply')
-        email_cc     = _get('email.cc', [])
-        email_to     = _get('email.to', [])
-        email_bcc    = _get('email.bcc', [])
-
-        log.debug("alert_email(): %s", alert)
-
-        log.debug("email_to: %s", email_to)
-
-        if not isinstance(email_cc, list) : email_cc  = [email_cc]
-        if not isinstance(email_to, list) : email_to  = [email_to]
-        if not isinstance(email_bcc, list): email_bcc = [email_bcc]
-
-        recipients = email_to + email_cc + email_bcc
-
-        assert recipients, "you must specify email recipient"
-
-        from email.mime.multipart import MIMEMultipart
-        from email.mime.text import MIMEText
-
-        # Create message container - the correct MIME type is multipart/alternative.
-        msg = MIMEMultipart('alternative')
-
-        def _set_email_header(key, value):
-            log.info("alert_email: %s: %s", key, value)
-            if isinstance(value, list):
-                msg[key] = ", ".join(value)
-            else:
-                msg[key] = value
-
-            rule['email.%s' % key.lower()] = msg[key]
-
-        _set_email_header('From', email_from)
-        _set_email_header('Subject', message['subject'])
-        _set_email_header('To', email_to)
-
-        if email_cc:
-            _set_email_header('Cc', email_cc)
-
-        log.info("alert_email: Bcc: %s", email_bcc)
-        recipients = email_to + email_cc + email_bcc
-
-        # Record the MIME types of both parts - text/plain and text/html.
-        part1 = MIMEText(message['plain'], 'plain')
-        part2 = MIMEText(message['html'], 'html')
-
-        # Attach parts into message container.
-        # According to RFC 2046, the last part of a multipart message, in this case
-        # the HTML message, is best and preferred.
-        msg.attach(part1)
-        msg.attach(part2)
-
-        email_message = msg.as_string()
-
-        log.info("Send email alert: smtp_host=%s, smtp_port=%s, smtp_ssl=%s", smtp_host, smtp_port, smtp_ssl)
-        log.info("alert_email: Text: %s", message['plain'])
-        log.info("alert_email: HTML: %s", message['html'])
-
-        if not rule.get('dry_run'):
-            result = self.email_sendmail(
-                host=smtp_host,
-                port=smtp_port,
-                use_ssl=smtp_ssl,
-                username=None,
-                password=None,
-                sender=email_from,
-                recipients=recipients,
-                message=email_message
-            )
-
-            if result:
-                for recipient in recipients:
-                    if recipient not in result:
-                        result[recipient] = {'status': 200, 'message': 'ok'}
-                    else:
-                        status, msg = result[recipient]
-                        result[recipient] = {'status': status, 'message': msg}
-
-                raise NotificationError("Some recipients had errors", result)
-
-
-    def email_sendmail(self, host='localhost', port=0, use_ssl=False,
-        username=None, password=None,
-        sender=None, recipients=[], message=''):
-
-        if use_ssl:
-            from smtplib import SMTP_SSL as SMTP
-        else:
-            from smtplib import SMTP
-
-        smtp = SMTP()
-        smtp.connect(host=host, port=port)
-        # if user and password are given, use them to smtp.login(user, pass)
-        if username is not None:
-            smtp.login(username, password)
-
-        result = smtp.sendmail(sender, recipients, message)
-        smtp.quit()
-        return result
+    def notify_email(self, message, alert, rule):
+        notifier = EmailNotifier(self.config, status=rule)
+        return notifier.notify(message, alert, rule)
 
     def get_notifications(self, alert_data):
-        # get the list of notification_specs
-        notification_specs = self.config.get('alerter.notifications', {})
-        log.info("notification_specs: %s", notification_specs)
-
         notifications = {}
         _notify = alert_data.get('notify', [])
         if isinstance(_notify, dict):
@@ -308,8 +195,36 @@ class Alerter:
 
         return _notify
 
-
     def do_alert(self, alert_data, all_clear=False):
+        notifier = Notifier(self.config, alert_data, prefixes=['alerter'])
+
+        # set future status
+        if all_clear:
+            alert_data['status'] = 'ok'
+            subject = alert_data.get('subject.ok', '')
+        else:
+            alert_data['status'] = 'alert'
+            subject = alert_data.get('subject.alert', '')
+
+        if isinstance(alert_data.get('subject'), string):
+            subject = alert_data.get('subject')
+
+        if not subject:
+            type = alert_data['type']
+            name = alert_data['name']
+            status  = alert_data['status'].upper()
+            subject = '[elastico] {} - {} {}'.format(status, type, name)
+
+        # remove_subject = False
+        # if 'message.subject' not in alert_data:
+        #     remove_subject = True
+        #     alert_data['message.subject'] = subject
+        #
+        log.info("      notification subject %s", subject)
+        notifier.notify(subject=subject)
+
+
+    def do_alert_old(self, alert_data, all_clear=False):
         '''Use alert data to create a notification and transport it via
         given transport'''
 
@@ -330,12 +245,25 @@ class Alerter:
         log.info('Alert (%s): %s has status %s', type, key, alert_data['status'])
 
         # get the list of notification_specs
-        notification_specs = self.config.get('alerter.notifications', {})
+        notification_specs = self.config.get('notifications', {})
+        notification_specs.update(self.config.get('alerter.notifications', {}))
+
         log.info("notification_specs: %s", notification_specs)
 
         notifications = {}
 
         _notify = self.get_notifications(alert_data)
+
+        if all_clear:
+            subject = alert_data.get('subject.ok', '')
+        else:
+            subject = alert_data.get('subject.alert', '')
+
+        if not subject:
+            status  = alert_data['status'].upper()
+            subject = '[elastico] {} - {} {}'.format(status, type, name)
+
+        log.info("      notification subject %s", subject)
 
         for notify_name in _notify:
             try:
@@ -352,24 +280,13 @@ class Alerter:
 
                 log.info("process notification %s %s", nspec.__class__.__name__, nspec)
 
-                if all_clear:
-                    subject = alert_data.get('subject.ok', '')
-                else:
-                    subject = alert_data.get('subject.alert', '')
-
-                if not subject:
-                    status  = alert_data['status'].upper()
-                    subject = '[elastico] {} - {} {}'.format(status, type, name)
-
-                log.info("      notification subject %s", subject)
                 nspec['message.subject'] = subject
+
                 text, data, plain, html = self.compose_message_text(
                     alert_data.get('message', {}),
                     alert_data,
                     _ = alert_data.get('match_hit._source', {})
                     )
-
-                nspec['message.text'] = text
 
                 message = {
                     'text': text,
@@ -379,7 +296,7 @@ class Alerter:
                     'subject': subject,
                 }
 
-                getattr(self, 'notify_'+nspec['transport'])(message, nspec, alert_data, all_clear)
+                getattr(self, 'notify_'+nspec['transport'])(message, nspec, alert_data)
 
                 if self.config.get('dry_run'):
                     nspec['status'] = 'dry_run'

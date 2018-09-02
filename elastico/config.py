@@ -10,7 +10,6 @@ from argdeco import ConfigDict
 class Undefined:
     pass
 
-
 class Config(ConfigDict):
     @classmethod
     def object(cls, value=None, file=None):

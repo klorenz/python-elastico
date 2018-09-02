@@ -12,6 +12,7 @@ from .cli import command, opt, arg
 from ..alerter import Alerter
 from ..connection import elasticsearch
 from ..util import write_output
+from ..server import Server
 
 import pyaml, logging, time
 logger = logging.getLogger('elastico.cli.alerter')
@@ -81,26 +82,18 @@ def alerter_run(config):
     alerter.process_rules()
 
 @alerter_command("serve",
-    arg('--sleep-seconds', '-s', type=float, default=60),
-    arg('--count', '-c', type=int, default=0),
+    arg('--sleep-seconds', '-s', type=float, default=60, config="serve.sleep_seconds"),
+    arg('--count', '-c', type=int, default=0, config="serve.count"),
     )
 def alerter_serve(config):
     """run alerter"""
 
-    counter = 0
-    while True:
-        config.refresh()
-        count = config['alerter.serve.count']
-        sleep_seconds = config['alerter.serve.sleep_seconds']
+    def _run():
         alerter = Alerter(elasticsearch(config), config)
-
-        if count > 0:
-            if counter >= count:
-                break
-
         alerter.process_rules()
-        time.sleep(sleep_seconds)
-        counter += 1
+
+    server = Server(config, run=_run)
+    server.run()
 
 @alerter_command("query")
 def alerter_run(config):

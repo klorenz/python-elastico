@@ -183,7 +183,6 @@ def test_alerter_alert(monkeypatch):
                 '@timestamp': at_s,
                 'at': at_s,
                 'status': 'alert',
-                'notifications': {},
                 'match_hit': {'foo': 'bar'},
                 'alert_trigger': True,
                 'key': 'test',
@@ -251,7 +250,6 @@ def test_alerter_alert_elasticsearch(monkeypatch):
                 'at': at_s,
                 'name': 'test',
                 'status': 'alert',
-                'notifications': {},
                 'match_hit': {'foo': 'bar'},
                 'alert_trigger': True,
                 'key': 'test',
@@ -325,7 +323,6 @@ def test_alerter_alert_filesystem(monkeypatch, tmpdir):
                 'alert_trigger': True,
                 'key': 'test',
                 'type': 'warning',
-                'notifications': {},
                 'match': 'x',
                 'match_hits_total': 4
             }
@@ -451,7 +448,6 @@ def test_alerter_match():
                      'key': 'value_check',
                      'match': 'value:[0 TO 10]',
                     'match_query': _match_query('value:[0 TO 10]', '10:02', '10:07'),
-                    'notifications': {},
                      'match_hit': {
                          '_id': '7',
                          '_index': 'test-alerter-match',
@@ -477,7 +473,6 @@ def test_alerter_match():
                     'at': at_s,
                     'timeframe':{'minutes': 5},
                     'index': 'test-alerter-match',
-                    'notifications': {},
                     'key': 'value_check',
                     'match': 'value:[10 TO 13]',
                     'match_query': _match_query('value:[10 TO 13]', '10:02', '10:07'),
@@ -546,11 +541,13 @@ def test_alerter_email(monkeypatch):
     monkeypatch.setattr(alerter, 'do_match', mock_matching_succeeds)
     from smtplib import SMTP
 
+    from elastico import util
+
     mock_args = {}
     def mock_sendmail(**kwargs):
         mock_args['sendmail'] = kwargs
 
-    monkeypatch.setattr(alerter, 'email_sendmail', mock_sendmail)
+    monkeypatch.setattr(util, 'sendmail', mock_sendmail)
 
     at = to_dt("2018-05-05 10:07:00")
     alerter.process_rules(at=at)
@@ -749,14 +746,15 @@ def test_do_alert(monkeypatch):
         # have to check the other items
     assert results[2] == ('quit', tuple(), dict())
     assert alert_data == {
-        'email': {
-            'from': 'noreply',
-            'subject': '[elastico] ALERT - the_type the_name',
-            'to': 'a@b.c'},
         'key': 'the_key',
         'name': 'the_name',
         'notifications': {
             'an-email': {
+                'email': {
+                    'from': 'noreply',
+                    'subject': '[elastico] ALERT - the_type the_name',
+                    'to': 'a@b.c',
+                },
                 'message': {
                     'subject': '[elastico] ALERT - '
                                 'the_type the_name',

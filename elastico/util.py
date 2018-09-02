@@ -1,5 +1,6 @@
 import sys, yaml, os, pytz, pyaml, json
 from os.path import exists, join, isdir
+from subprocess import Popen, PIPE
 
 if (sys.version_info > (3, 0)):
     PY3 = True
@@ -156,4 +157,88 @@ def write_output(config, data):
         pyaml.p(data)
     elif output_format == 'json':
         print(json.dumps(data, indent=2))
+
+def sendmail(host='localhost', port=0, use_ssl=False,
+    username=None, password=None,
+    sender=None, recipients=[], message=''):
+
+    log.debug("sendmail")
+
+    if use_ssl:
+        from smtplib import SMTP_SSL as SMTP
+    else:
+        from smtplib import SMTP
+
+    smtp = SMTP()
+    smtp.connect(host=host, port=port)
+    # if user and password are given, use them to smtp.login(user, pass)
+    if username is not None:
+        smtp.login(username, password)
+
+    result = smtp.sendmail(sender, recipients, message)
+    smtp.quit()
+    return result
+
+
+def run_command(kwargs, data=None):
+
+    log.debug("do_some_command: kwargs=%s", kwargs)
+
+    if isinstance(kwargs, string):
+        kwargs = {'args': kwargs, 'shell': True}
+    elif isinstance(kwargs, (list, tuple)):
+        kwargs = {'args': kwargs}
+
+    def _get_capture_value(name):
+        if name in kwargs:
+            return kwargs.pop(name)
+        elif data is not None and name in data:
+            return data[name]
+        else:
+            return False
+        return
+
+    capture_stdout = _get_capture_value('stdout')
+    capture_stderr = _get_capture_value('stderr')
+
+    if 'input' in kwargs:
+        input = kwargs.pop('input')
+        kwargs['stdin'] = PIPE
+    else:
+        input = None
+
+    log.info("run_command: kwargs=%s", kwargs)
+    p = Popen(stdout=PIPE, stderr=PIPE, **kwargs)
+    (stdout, stderr) = p.communicate(input)
+    result = p.wait()
+
+    if data is not None:
+        _result = {}
+        if capture_stdout:
+            if stdout.count("\n".encode('utf-8')) == 1:
+                stdout = stdout.strip()
+            _result['stdout'] = stdout
+        if capture_stderr:
+            _result['stderr'] = stderr
+        _result['exit_code'] = result
+
+        data['result'] = _result
+
+    return (result, stdout, stderr)
+
+
+    log.debug("capture_stdout=%s, capture_stderr=%s", capture_stdout, capture_stderr)
+
+    if rule is not None:
+        if capture_stdout:
+            if stdout.count("\n".encode('utf-8')) == 1:
+                stdout = stdout.strip()
+            rule['result.stdout'] = stdout
+        if capture_stderr:
+            rule['result.stderr'] = stderr
+        rule['result.exit_code'] = result
+
+    log.debug("rule: %s", rule)
+
+    return (result, stdout, stderr)
 
