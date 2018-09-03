@@ -155,8 +155,11 @@ class Notifier(BaseNotifier):
 
     def compose_message_text(self, message, rule, **kwargs):
         '''compose message text from text with data from alert and rule
-
         '''
+
+        log.debug("compose_message_text message=%r, rule=%r, kwargs=%r",
+            message, rule, kwargs)
+
         import markdown
         data  = indent(pyaml.dump(rule, dst=unicode), " "*4)+"\n"
         #if message
@@ -206,10 +209,12 @@ class Notifier(BaseNotifier):
                     notify_spec.update(deepcopy(notify_name))
                     notify_name = notify_spec['notification']
 
+                try:
+                underscore = Config(data.get('match_hit._source', {}))
                 text, data_s, plain, html = self.compose_message_text(
                     data.get('message', {}),
                     data,
-                    _ = Config(data.get('match_hit._source', {}))
+                    _ = underscore,
                     )
 
                 log.debug("data: %r", data)

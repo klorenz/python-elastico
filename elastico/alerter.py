@@ -156,21 +156,6 @@ class Alerter:
         elif storage_type == 'memory':
             return self.STATUS.get(type, {}).get(key)
 
-    def compose_message_text(self, message, rule, **kwargs):
-        '''compose message text from text with data from alert and rule
-
-        '''
-        import markdown
-        data  = indent(4, pyaml.dump(rule, dst=unicode))+"\n"
-        #if message
-        plain = message.get('plain', '{message.text}\n{message.data}')
-        text  = message.get('text', '')
-        text  = rule.format(text, Config(kwargs))
-        plain = rule.format(plain, Config(kwargs), Config({'message': {'data': data, 'text': text}}))
-        html  = markdown.markdown(plain)
-
-        return (text, data, plain, html)
-
 
     def do_alert(self, alert_data, all_clear=False):
         notifier = Notifier(self.config, alert_data, prefixes=['alerter'])
@@ -370,7 +355,7 @@ class Alerter:
             need_alert = self.do_match(alert_data)
 
         if need_alert:
-            log.warning("need alert: %s", alert_data['name'])
+            log.warning("need alert: %s", alert_data.getval('name'))
             # new status = alert
             if status == 'alert' and last_rule:
                  delta = timedelta(**alert_data.get('realert', {'minutes': 60}))
