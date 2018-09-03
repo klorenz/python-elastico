@@ -562,7 +562,8 @@ class Alerter:
 
                 assert 'match' in alert_data or 'no_match' in alert_data \
                     or 'command_succeeds' in alert_data \
-                    or 'command_fails' in alert_data
+                    or 'command_fails' in alert_data, \
+                    "rule %s does not have a check defined" % _r_name
 
                 log.debug("alert_data: %s", alert_data)
 
