@@ -27,11 +27,10 @@ def dt_isoformat(dt, sep='T', timespec='seconds'):
     if not isinstance(dt, (datetime, date)):
         dt = dt_parse(dt)
 
-    if PY3:
+    try:
         result = dt.isoformat(sep, timespec)
         result = result.rsplit('+', 1)[0]
-
-    else:
+    except TypeError:
         result = dt.isoformat(sep)
         result = result.rsplit('+', 1)[0]
 

@@ -171,29 +171,6 @@ class Alerter:
 
         return (text, data, plain, html)
 
-    def notify_command(self, message, alert, rule, all_clear=None):
-        cmd = alert.get('command')
-        cmd = alert.format(cmd, message)
-
-        if not rule.get('dry_run'):
-            (result, stdout, stderr) = self.do_some_command(cmd, alert)
-
-    def notify_email(self, message, alert, rule):
-        notifier = EmailNotifier(self.config, status=rule)
-        return notifier.notify(message, alert, rule)
-
-    def get_notifications(self, alert_data):
-        notifications = {}
-        _notify = alert_data.get('notify', [])
-        if isinstance(_notify, dict):
-            _tmp = []
-            for k,v in _notify.items():
-                _notification = deepcopy(v)
-                _notification['notification'] = k
-                _tmp.append(_notification)
-            _notify = _tmp
-
-        return _notify
 
     def do_alert(self, alert_data, all_clear=False):
         notifier = Notifier(self.config, alert_data, prefixes=['alerter'])
@@ -222,133 +199,6 @@ class Alerter:
         #
         log.info("      notification subject %s", subject)
         notifier.notify(subject=subject)
-
-
-    def do_alert_old(self, alert_data, all_clear=False):
-        '''Use alert data to create a notification and transport it via
-        given transport'''
-
-        assert isinstance(alert_data, Config), "given alert data must be Config instance"
-
-        log.info("do alert for: %s %s", alert_data.__class__.__name__, alert_data)
-
-        # set future status
-        if all_clear:
-            alert_data['status'] = 'ok'
-        else:
-            alert_data['status'] = 'alert'
-
-        # key and type must be present
-        key = alert_data['key']
-        type = alert_data['type']
-        name = alert_data['name']
-        log.info('Alert (%s): %s has status %s', type, key, alert_data['status'])
-
-        # get the list of notification_specs
-        notification_specs = self.config.get('notifications', {})
-        notification_specs.update(self.config.get('alerter.notifications', {}))
-
-        log.info("notification_specs: %s", notification_specs)
-
-        notifications = {}
-
-        _notify = self.get_notifications(alert_data)
-
-        if all_clear:
-            subject = alert_data.get('subject.ok', '')
-        else:
-            subject = alert_data.get('subject.alert', '')
-
-        if not subject:
-            status  = alert_data['status'].upper()
-            subject = '[elastico] {} - {} {}'.format(status, type, name)
-
-        log.info("      notification subject %s", subject)
-
-        for notify_name in _notify:
-            try:
-                #alert = Config.object(alert_data)
-                nspec = Config.object()
-
-                if isinstance(notify_name, string):
-                    nspec.update(deepcopy(notification_specs[notify_name]))
-                    nspec['notification'] = notify_name
-
-                else:
-                    nspec.update(deepcopy(notify_name))
-                    notify_name = nspec['notification']
-
-                log.info("process notification %s %s", nspec.__class__.__name__, nspec)
-
-                nspec['message.subject'] = subject
-
-                text, data, plain, html = self.compose_message_text(
-                    alert_data.get('message', {}),
-                    alert_data,
-                    _ = alert_data.get('match_hit._source', {})
-                    )
-
-                message = {
-                    'text': text,
-                    'data': data,
-                    'plain': plain,
-                    'html': html,
-                    'subject': subject,
-                }
-
-                getattr(self, 'notify_'+nspec['transport'])(message, nspec, alert_data)
-
-                if self.config.get('dry_run'):
-                    nspec['status'] = 'dry_run'
-                else:
-                    nspec['status'] = 'ok'
-
-                notifications[notify_name] = alert_data.format(nspec)
-
-            except Exception as e:
-                # log.error('Error while processing notification %s: %s', notify_name, e)
-
-                nspec['status'] = 'error'
-
-                args = e.args[1:]
-                if len(args) > 1:
-                    details = dict( (str(i), a) for a in enumerate(args, 1)  )
-                elif len(args) == 1:
-                    details = args[0]
-                if len(args) == 0:
-                    details = None
-
-                if hasattr(e, 'message'):
-                    message = e.message
-                else:
-                    message = e.__class__.__name__+"("+str(e)+")"
-
-                log.error("      notification error %s", message)
-                nspec['error'] = {
-                    'message': message,
-                    'details': details,
-                }
-
-                log.debug('nspec[error]: %s', nspec['error'])
-
-            log.info("      notification %s -> %s", notify_name, nspec['status'])
-
-        alert_data['notifications'] = _n = {}
-        for n_name,notification in notifications.items():
-            _n[n_name] = {}
-            for k,v in notification.items():
-                if k not in alert_data or k in ('status', 'error', 'result'):
-                    _n[n_name][k] = v
-
-        log.warning("Done notifications: %s", alert_data)
-
-            # we do not need plain as composition of text and data
-            # we do not need data (as in rule)
-            # we do not need to store the HTML text
-            # del _n[n_name]['message']['plain']
-            # del _n[n_name]['message']['html']
-            # del _n[n_name]['message']['data']
-
 
     def get_query(self, rule, name):
         body = None
@@ -763,5 +613,3 @@ class Alerter:
         Alerter(None, config).process_rules(action=collect_rules)
         return RULES
 
-# TODO: have to refactor Config, such that formatting is not done implicitely
-# TODO: need a formatter, which can work with dict + defaults, and this formatter must be used in new Config
