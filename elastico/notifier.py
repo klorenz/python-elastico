@@ -76,9 +76,9 @@ class EmailNotifier(BaseNotifier):
 
         (plain, html) = (None, None)
 
-        if 'plain' in message:
+        if message.get('plain'):
             plain = MIMEText(message['plain'], 'plain')
-        if 'html' in message:
+        if message.get('html'):
             html = MIMEText(message['html'], 'html')
 
         if plain and html:
@@ -166,6 +166,8 @@ class Notifier(BaseNotifier):
         try:
             data  = indent(pyaml.dump(rule, dst=unicode), " "*4)+"\n"
         except Exception as e:
+            log.error("could not convert data to YAML -- message='%s', rule=%r", e, rule)
+
             data = "Could not convert data to YAML.\n\n"
             data += indent(pformat(rule)," "*4)
 
@@ -177,6 +179,7 @@ class Notifier(BaseNotifier):
             plain = rule.format(plain, Config(kwargs), Config({'message': {'data': data, 'text': text}}))
             html  = markdown.markdown(plain)
         except Exception as e:
+            log.error("could not compose message -- message='%s', kwargs=%r", e, kwargs)
             text = "Could not compose text or plain message:\n\n"
             text += str(e)
             text += "\n\n"+ data
