@@ -18,10 +18,29 @@ class ElasticoFormatter(Formatter):
                 indent=None
 
             result = json.dumps(value, indent=indent)
+        elif format_spec.endswith('indent'):
+            try:
+                first, rest = format_spec[:-6].split('.')
+                first = " "*int(first)
+                rest = " "*int(rest)
+            except:
+                first=''
+                rest=''
+
+            result = indent(value, indent=rest)
         else:
             result = super(ElasticoFormatter, self).format_field(value, format_spec)
 
         log.debug("result=%r", result)
+
+        return result
+
+    def convert_field(self, value, conversion):
+        if conversion == 'json':
+            result = json.dumps(value, indent=2)
+        else:
+            parent = super(ElasticoFormatter, self)
+            result = parent.convert_field(value, conversion)
 
         return result
 
