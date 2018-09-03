@@ -49,7 +49,7 @@ class Server:
                 sleep_seconds = float(self.get_value('serve.sleep_seconds', 60))
 
             log.info("run -- counter=%r, count=%r, sleep_seconds=%r, at=%r",
-                counter, count, sleep_seconds, at)
+                counter, count, sleep_seconds, _at)
 
             if count > 0:
                 if counter >= count:
