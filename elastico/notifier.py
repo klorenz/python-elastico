@@ -2,6 +2,7 @@ from copy import deepcopy
 from textwrap import indent
 from .config import Config
 from .util import run_command, string, PY3
+from pprint import pformat
 
 if PY3:
     unicode = str
@@ -161,13 +162,26 @@ class Notifier(BaseNotifier):
             message, rule, kwargs)
 
         import markdown
-        data  = indent(pyaml.dump(rule, dst=unicode), " "*4)+"\n"
-        #if message
-        plain = message.get('plain', '{message.text}\n{message.data}')
-        text  = message.get('text', '')
-        text  = rule.format(text, Config(kwargs))
-        plain = rule.format(plain, Config(kwargs), Config({'message': {'data': data, 'text': text}}))
-        html  = markdown.markdown(plain)
+
+        try:
+            data  = indent(pyaml.dump(rule, dst=unicode), " "*4)+"\n"
+        except Exception as e:
+            data = "Could not convert data to YAML.\n\n"
+            data += indent(pformat(rule)," "*4)
+
+        try:
+            #if message
+            plain = message.get('plain', '{message.text}\n{message.data}')
+            text  = message.get('text', '')
+            text  = rule.format(text, Config(kwargs))
+            plain = rule.format(plain, Config(kwargs), Config({'message': {'data': data, 'text': text}}))
+            html  = markdown.markdown(plain)
+        except Exception as e:
+            text = "Could not compose text or plain message:\n\n"
+            text += str(e)
+            text += "\n\n"+ data
+            plain = text
+            html = None
 
         return (text, data, plain, html)
 
