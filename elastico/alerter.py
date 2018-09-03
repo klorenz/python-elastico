@@ -163,13 +163,13 @@ class Alerter:
         # set future status
         if all_clear:
             alert_data['status'] = 'ok'
-            subject = alert_data.get('subject.ok', '')
+            subject = alert_data.getval('subject.ok', '')
         else:
             alert_data['status'] = 'alert'
-            subject = alert_data.get('subject.alert', '')
+            subject = alert_data.getval('subject.alert', '')
 
         if isinstance(alert_data.get('subject'), string):
-            subject = alert_data.get('subject')
+            subject = alert_data.getval('subject')
 
         if not subject:
             type = alert_data['type']
