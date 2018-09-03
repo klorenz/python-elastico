@@ -25,7 +25,10 @@ class ElasticoFormatter(Formatter):
                 rest = " "*int(rest)
             except:
                 first=''
-                rest=''
+                try:
+                    rest = " "*int(format_spec[:-6])
+                except:
+                    rest=''
 
             result = indent(value, indent=rest)
         else:
