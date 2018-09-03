@@ -187,7 +187,7 @@ class Alerter:
 
     def get_query(self, rule, name):
         body = None
-        query = rule.get(name)
+        query = rule.getval(name)
 
         # list of filters
         if isinstance(query, list):
@@ -201,16 +201,16 @@ class Alerter:
         if isinstance(query, dict):
             return query
 
-        timestamp_field = rule.get('timestamp_field', '@timestamp')
-        timeframe = rule.get('timeframe', {'minutes': 15})
+        timestamp_field = rule.getval('timestamp_field', '@timestamp')
+        timeframe = rule.getval('timeframe', {'minutes': 15})
 
         if 'endtime' in rule:
-            endtime = to_dt(rule.get('endtime'))
+            endtime = to_dt(rule.getval('endtime'))
         else:
             endtime = to_dt(self.config['at'])
 
         if 'starttime' in rule:
-            starttime = to_dt(rule.get('starttime'))
+            starttime = to_dt(rule.getval('starttime'))
         else:
             starttime = endtime - timedelta(**timeframe)
 
