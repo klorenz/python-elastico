@@ -250,7 +250,7 @@ class Notifier(BaseNotifier):
                 notify_spec['message.subject'] = subject
                 notify_spec['message.text'] = text
 
-                self.transport_notification(message, notify_spec, data)
+                self.transport_notification(message, data.format(notify_spec), data.format())
 
                 if self.config.get('dry_run'):
                     notify_spec['status'] = 'dry_run'

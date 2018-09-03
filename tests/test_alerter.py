@@ -767,9 +767,9 @@ def test_do_alert(monkeypatch):
  'type': 'the_type'}
 
 def test_compose_message():
-    alerter = Alerter()
+    notifier = Notifier({})
 
-    (text, data, plain, html) = alerter.compose_message_text(
+    (text, data, plain, html) = notifier.compose_message_text(
         {'text': 'hello {name.firstname}', 'plain': '{message.text}'},
         Config({'name': {'firstname': 'Esmeralda'}}),
     )
