@@ -245,18 +245,12 @@ class Alerter:
         max_total = rule.get('matches_max')
         # ... otherwise we will alert
 
-        if min_total is None and max_total is None:
-            max_total = 0
-
         # first check if totals are within given bounds
-        _result = True
+        _result = False
         if min_total is not None:
-            _result = _result and results['hits']['total'] >= min_total
+            _result = _result or results['hits']['total'] >= min_total
         if max_total is not None:
-            _result = _result and results['hits']['total'] <= max_total
-
-        # then invert the result
-        _result = not _result
+            _result = _result or results['hits']['total'] <= max_total
 
         rule['alert_trigger'] = _result
         return _result
