@@ -34,7 +34,7 @@ class Server:
         error_count = 0
         while True:
             if self.run_now:
-                _at = dt_isoformat(to_dt(datetime.now()), timespec='seconds')
+                _at = dt_isoformat(to_dt(datetime.utcnow()), timespec='seconds')
             else:
                 _at = dt_isoformat(
                     to_dt(self.config.get('at')) +
@@ -48,8 +48,8 @@ class Server:
             if sleep_seconds is None:
                 sleep_seconds = float(self.get_value('serve.sleep_seconds', 60))
 
-            log.info("run -- counter=%r, count=%r, sleep_seconds=%r",
-                counter, count, sleep_seconds)
+            log.info("run -- counter=%r, count=%r, sleep_seconds=%r, at=%r",
+                counter, count, sleep_seconds, at)
 
             if count > 0:
                 if counter >= count:
