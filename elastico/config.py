@@ -314,7 +314,9 @@ class Config(ConfigDict):
                             _data.update(d)
 
                     result = current.format(**_data)
-                except KeyError, AttributeError:
+                except KeyError:
+                    result = current
+                except AttributeError:
                     result = current
             log.debug("format_value result=%s", result)
 
