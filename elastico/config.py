@@ -57,8 +57,8 @@ class Config(ConfigDict):
     def logging_setup(self):
         logspec = self.get('logging', {})
         if logspec:
-            logspec = self.config.flatten(logspec)
-            for k,v in logspec:
+            logspec = self.flatten(logspec)
+            for k,v in logspec.items():
                 if k == 'ROOT':
                     k = None
                 logger = logging.getLogger(k)

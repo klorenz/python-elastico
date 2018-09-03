@@ -28,7 +28,7 @@ class Server:
             self.config.refresh()
 
             if count is None:
-                count = int(self.get_value('serve.count'))
+                count = int(self.get_value('serve.count', -1))
             if sleep_seconds is None:
                 sleep_seconds = float(self.get_value('serve.sleep_seconds', 60))
 
