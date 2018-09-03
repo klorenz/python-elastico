@@ -1,8 +1,10 @@
 import time
 import logging
 import sys
+from datetime import datetime, timedelta
 from .notifier import Notifier
 from .config import Config
+from .util import to_dt, dt_isoformat
 
 log = logging.getLogger('elastico.server')
 
@@ -15,6 +17,12 @@ class Server:
         self.prefix = prefix
         self.func   = run
 
+        before_5s = to_dt(datetime.utcnow() - timedelta(seconds=5))
+        if before_5s < to_dt(self.config.get('at')) < to_dt(datetime.utcnow()):
+            self.run_now = True
+        else:
+            self.run_now = False
+
     def get_value(self, name, default=None):
         if self.prefix:
             return self.config.get('%s.%s' % (prefix, name), default)
@@ -25,7 +33,15 @@ class Server:
         counter = 0
         error_count = 0
         while True:
-            self.config.refresh()
+            if self.run_now:
+                _at = dt_isoformat(to_dt(datetime.now()), timespec='seconds')
+            else:
+                _at = dt_isoformat(
+                    to_dt(self.config.get('at')) +
+                    timedelta(seconds=int(sleep_seconds))
+                    )
+
+            self.config.refresh(at=_at)
 
             if count is None:
                 count = int(self.get_value('serve.count', -1))

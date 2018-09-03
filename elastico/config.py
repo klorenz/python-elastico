@@ -65,14 +65,16 @@ class Config(ConfigDict):
                 logger.setLevel(getattr(logging, v))
                 log.info("change loglevel -- logger=%s, level=%s", k, v)
 
-    def refresh(self):
+    def refresh(self, **kwargs):
         '''refresh this dictionary by rereading the data from disk'''
         log.info("refresh config -- config_file=%s", self.config_file)
         _arguments = self.get('arguments', {})
+        _arguments.update(kwargs)
         self.clear()
         self.load_from_file(self.config_file)
         if _arguments:
             self['arguments'] = _arguments
+
 
     def get_filename(self, *configs):
         for config in configs:

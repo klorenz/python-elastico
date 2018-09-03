@@ -519,7 +519,7 @@ class Alerter:
             # overrides from arguments
             r.update(self.config.get('alerter.rule.%s', {}))
 
-            log.info("--- rule %s", r.get('name'))
+            log.info("--- rule %s", _name)
 
             _alerts = r.get('alerts', [])
 
