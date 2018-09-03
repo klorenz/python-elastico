@@ -231,7 +231,7 @@ class Alerter:
         index = rule.get('index')
         body['size'] = 1
 
-        assert index, "index must be present in rule"
+        assert index, "index must be present in rule %s" % rule.getval('name')
         rule['match_query'] = body
         results = self.es.search(index=index, body=body)
         log.debug("results: %s", results)

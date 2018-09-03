@@ -182,8 +182,9 @@ def sendmail(host='localhost', port=0, use_ssl=False,
 
 
 def run_command(kwargs, data=None):
+    log = logging.getLogger('elastico.util.command')
 
-    log.debug("do_some_command: kwargs=%s", kwargs)
+    log.debug("run_command -- kwargs=%s", kwargs)
 
     if isinstance(kwargs, string):
         kwargs = {'args': kwargs, 'shell': True}
@@ -208,7 +209,7 @@ def run_command(kwargs, data=None):
     else:
         input = None
 
-    log.info("run_command: kwargs=%s", kwargs)
+    log.info("Popen -- kwargs=%s", kwargs)
     p = Popen(stdout=PIPE, stderr=PIPE, **kwargs)
     (stdout, stderr) = p.communicate(input)
     result = p.wait()
