@@ -35,16 +35,6 @@ class Server:
             log.info("run -- counter=%r, count=%r, sleep_seconds=%r",
                 counter, count, sleep_seconds)
 
-            logspec = self.get_value('logging', {})
-            if logspec:
-                logspec = self.config.flatten(logspec)
-                for k,v in logspec:
-                    if k == 'ROOT':
-                        k = None
-                    logger = logging.getLogger(k)
-                    logger.setLevel(getattr(logging, v))
-                    log.info("change loglevel -- logger=%s, level=%s", k, v)
-
             if count > 0:
                 if counter >= count:
                     break

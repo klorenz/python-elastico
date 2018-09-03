@@ -52,8 +52,22 @@ class Config(ConfigDict):
         self.include_file(file_name)
         self.set_filename(file_name)
 
+        self.logging_setup()
+
+    def logging_setup(self):
+        logspec = self.get('logging', {})
+        if logspec:
+            logspec = self.config.flatten(logspec)
+            for k,v in logspec:
+                if k == 'ROOT':
+                    k = None
+                logger = logging.getLogger(k)
+                logger.setLevel(getattr(logging, v))
+                log.info("change loglevel -- logger=%s, level=%s", k, v)
+
     def refresh(self):
         '''refresh this dictionary by rereading the data from disk'''
+        log.info("refresh config -- config_file=%s", self.config_file)
         _arguments = self.get('arguments', {})
         self.clear()
         self.load_from_file(self.config_file)
