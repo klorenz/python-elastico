@@ -209,7 +209,6 @@ class Notifier(BaseNotifier):
                     notify_spec.update(deepcopy(notify_name))
                     notify_name = notify_spec['notification']
 
-                try:
                 underscore = Config(data.get('match_hit._source', {}))
                 text, data_s, plain, html = self.compose_message_text(
                     data.get('message', {}),
