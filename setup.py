@@ -3,7 +3,7 @@ from distutils.core import setup
 
 setup(
     name         = 'elastico',
-    version      = '0.0.20',
+    version      = '0.0.21',
     description  = "Elasticsearch Companion - a commandline tool",
     author       = "Kay-Uwe (Kiwi) Lorenz",
     author_email = "kiwi@franka.dyndns.org",
