@@ -10,6 +10,10 @@ from argdeco import ConfigDict
 class Undefined:
     pass
 
+from .formatter import ElasticoFormatter
+
+formatter = ElasticoFormatter()
+
 class Config(ConfigDict):
     @classmethod
     def object(cls, value=None, file=None):
@@ -313,7 +317,9 @@ class Config(ConfigDict):
                         for d in data:
                             _data.update(d)
 
-                    result = current.format(**_data)
+                    result = formatter.format(current, **_data)
+
+                    #result = current.format(**_data)
                 except KeyError:
                     result = current
                 except AttributeError:
