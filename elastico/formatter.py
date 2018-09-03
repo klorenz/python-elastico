@@ -1,5 +1,5 @@
 from string import Formatter
-import logging
+import logging, json
 log = logging.getLogger('elastico.formatter')
 
 class ElasticoFormatter(Formatter):
