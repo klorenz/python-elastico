@@ -340,6 +340,7 @@ class Alerter:
         return _result
 
     def check_alert(self, alert_data, status=None):
+        _key = alert_data.get('key')
         logger_name = alert_data.getval('logger', 'elastico.alerter.%s' % _key)
         log = logging.getLogger(logger_name)
 
@@ -433,6 +434,7 @@ class Alerter:
 
     ALIAS = re.compile(r"^\s*\*(\w+)(\.\w+)*(\s+\*(\w+)(\.\w+)*)*\s*$")
     def process(self, rule, action=None):
+        log = globals()['log']
 
         has_foreach = False
 
@@ -519,7 +521,7 @@ class Alerter:
 
             _name = r.getval('name')
             _key  = r.getval('key')
-            if not _key
+            if not _key:
                 _key = re.sub(r'[^\w]+', '_', _name.lower())
 
             # overrides from arguments
