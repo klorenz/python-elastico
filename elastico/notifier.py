@@ -209,7 +209,7 @@ class Notifier(BaseNotifier):
                 text, data_s, plain, html = self.compose_message_text(
                     data.get('message', {}),
                     data,
-                    _ = data.get('match_hit._source', {})
+                    _ = Config(data.get('match_hit._source', {}))
                     )
 
                 log.debug("data: %r", data)

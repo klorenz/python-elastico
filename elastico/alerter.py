@@ -340,6 +340,9 @@ class Alerter:
         return _result
 
     def check_alert(self, alert_data, status=None):
+        logger_name = alert_data.getval('logger', 'elastico.alerter.%s' % _key)
+        log = logging.getLogger(logger_name)
+
         if status is None:
             # get last status of this alert_data
             try:
@@ -515,9 +518,15 @@ class Alerter:
                 r.update(deepcopy(data))
 
             _name = r.getval('name')
+            _key  = r.getval('key')
+            if not _key
+                _key = re.sub(r'[^\w]+', '_', _name.lower())
 
             # overrides from arguments
-            r.update(self.config.get('alerter.rule.%s', {}))
+            #r.update(self.config.get('alerter.rule.%s', {}))
+
+            logger_name = r.getval('logger', 'elastico.alerter.%s' % _key)
+            log = logging.getLogger(logger_name)
 
             log.info("--- rule %s", _name)
 
