@@ -325,6 +325,8 @@ class Alerter:
         return _result
 
     def check_alert(self, alert_data, status=None):
+        if not isinstance(alert_data, Config):
+            alert_data = Config(alert_data)
         _key = alert_data.get('key')
         logger_name = alert_data.getval('logger', 'elastico.alerter.%s' % _key)
         log = logging.getLogger(logger_name)
@@ -544,6 +546,7 @@ class Alerter:
                 alert_data.update(r)
 
                 alert_data.update(alert)
+                alert_data = alert_data.format()
 
                 if 'alerts' in alert_data:
                     del alert_data['alerts']
@@ -555,7 +558,7 @@ class Alerter:
                 if 'key' not in alert_data:
                     alert_data['key'] = re.sub(r'[^\w]+', '_', _r_name.lower())
 
-                _key = alert_data.getval('key')
+                _key = alert_data.get('key')
 
                 log.info("----- alert %s-%s?", _type, _key)
 

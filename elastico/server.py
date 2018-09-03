@@ -63,7 +63,7 @@ class Server:
                 error_count += 1
 
                 log.error("fatal error running server function -- "
-                    "message=%r error_count=%r", e, error_count)
+                    "message=%r error_count=%r", e, error_count, exc_info=1)
 
                 notifier = Notifier(self.config, prefixes=[self.prefix])
                 notify = self.get_value('serve.error_notify', [])
