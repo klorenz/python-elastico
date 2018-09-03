@@ -348,7 +348,7 @@ class Alerter:
             need_alert = need_alert or self.do_command_succeeds(alert_data)
 
         if 'match' in alert_data:
-            need_alert = self.do_match(alert_data)
+            need_alert = need_alert or self.do_match(alert_data)
 
         if need_alert:
             log.warning("need alert -- name=%r, status=%r", alert_data.getval('name'), status)
@@ -357,7 +357,7 @@ class Alerter:
                  delta = timedelta(**alert_data.get('realert', {'minutes': 60}))
                  wait_time = delta - ( to_dt(self.config['at']) -
                     to_dt(last_rule['@timestamp']) )
-                 log.debug("delta=%r wait_time=%r", delta, wait_time)
+                 log.info("delta=%r wait_time=%r", delta, wait_time)
 
                  if wait_time > timedelta(0):
                      alert_data['status'] = 'wait-realert'
