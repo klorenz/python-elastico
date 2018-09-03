@@ -179,10 +179,12 @@ class Notifier(BaseNotifier):
             plain = rule.format(plain, Config(kwargs), Config({'message': {'data': data, 'text': text}}))
             html  = markdown.markdown(plain)
         except Exception as e:
+            import traceback
             log.error("could not compose message -- message=%r, kwargs=%r", e, kwargs)
             text = "Could not compose text or plain message:\n\n"
-            text += str(e)
-            text += "\n\n"+ data
+            text += traceback.format_exc()
+            text += "\n\n"+data
+
             plain = text
             html = None
 

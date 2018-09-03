@@ -351,12 +351,13 @@ class Alerter:
             need_alert = self.do_match(alert_data)
 
         if need_alert:
-            log.warning("need alert: %s", alert_data.getval('name'))
+            log.warning("need alert -- name=%r, status=%r", alert_data.getval('name'), status)
             # new status = alert
             if status == 'alert' and last_rule:
                  delta = timedelta(**alert_data.get('realert', {'minutes': 60}))
-                 wait_time = delta - ( to_dt(datetime.utcnow()) -
+                 wait_time = delta - ( to_dt(self.config['at']) -
                     to_dt(last_rule['@timestamp']) )
+                 log.debug("delta=%r wait_time=%r", delta, wait_time)
 
                  if wait_time > timedelta(0):
                      alert_data['status'] = 'wait-realert'
