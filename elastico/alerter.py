@@ -149,8 +149,10 @@ class Alerter:
                             pass
                     return result
 
-            else:
-                return None
+                else:
+                    return None
+            except Exception as e:
+                raise
 
         elif storage_type == 'filesystem':
             storage_path = self.config.get('alerter.status_storage_path')
