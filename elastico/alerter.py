@@ -118,6 +118,8 @@ class Alerter:
         if type is None:
             type = rule.get('type')
 
+        log.debug("read_status storage_type=%r, key=%r, type=%s", storage_type, key, type)
+
         if storage_type == 'elasticsearch':
             if self.status_index_dirty:
                 self.refresh_status_storage_index()
@@ -143,6 +145,7 @@ class Alerter:
                         result['match_query'] = json.loads(result['match_query'])
                     except:
                         pass
+                return result
             else:
                 return None
 
