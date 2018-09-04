@@ -261,9 +261,14 @@ class Alerter:
 
         # first check if totals are within given bounds
         _result = False
-        if min_total is not None:
+        if min_total is not None and max_total is not None:
+            _result = results['hits']['total'] >= min_total
+            _result = _result and results['hits']['total'] <= max_total
+
+        elif min_total is not None:
             _result = _result or results['hits']['total'] >= min_total
-        if max_total is not None:
+
+        elif max_total is not None:
             _result = _result or results['hits']['total'] <= max_total
 
         log.info("match -- key=%r type=%r hits=%r min=%r max=%r trigger=%r "
