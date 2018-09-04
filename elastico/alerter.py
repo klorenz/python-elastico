@@ -268,7 +268,7 @@ class Alerter:
         log.info("match -- key=%r type=%r hits=%r min=%r max=%r trigger=%r "
             "index=%r match_query=%s",
             key, type, results['hits']['total'], min_total, max_total, _result,
-            index, rule['match_query'])
+            index, json.dumps(rule['match_query']))
 
         rule['alert_trigger'] = _result
         return _result
