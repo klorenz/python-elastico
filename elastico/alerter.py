@@ -47,13 +47,13 @@ class Alerter:
 
     def wipe_status_storage(self):
         '''remove all status storages'''
-        result = self.es.indices.delete('elastico-alert-*')
+        result = self.es.indices.delete('elastico-alerter-*')
         log.debug("wipe_status_storage: %s", result)
         return result
 
     def get_status_storage_index(self):
         date = to_dt(self.config['at'])
-        return date.strftime('elastico-alert-%Y-%m-%d')
+        return date.strftime('elastico-alerter-%Y-%m-%d')
 
     def refresh_status_storage_index(self):
         if self.es:
