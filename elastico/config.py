@@ -113,6 +113,9 @@ class Config(ConfigDict):
         '''
 #        log.debug("__getitem__: %s", name)
 
+        if name == '.':
+            return self
+
         try:
             arguments = super(Config, self).__getitem__('arguments')
         except KeyError:

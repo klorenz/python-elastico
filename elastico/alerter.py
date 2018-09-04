@@ -75,6 +75,14 @@ class Alerter:
         if 'at' in rule:
             rule['at'] = dt_isoformat(rule['at'])
 
+        import socket
+        rule['elastico.hostname'] = socket.gethostname()
+
+        # get data, which is written to any status
+        _status = Config(self.config.get('status_data'))
+        _status.update(self.config.get('alerter.status_data'))
+        rule.update(_status)
+
         log.debug("rule to write to status: %s", rule)
 
         key  = rule.get('key')
@@ -87,7 +95,6 @@ class Alerter:
                 rule['match'] = json.dumps(rule['match'])
             if 'match_query' in rule and not isinstance(rule['match_query'], string):
                 rule['match_query'] = json.dumps(rule['match_query'])
-
 
             result = self.es.index(index=index, doc_type="elastico_alert_status", body=rule)
             #self.es.indices.refresh(index)
