@@ -332,6 +332,7 @@ class Alerter:
 
                 if last_rule is not None:
                     status = last_rule['status']
+                log.warning("last_rule: %s", last_rule)
             except:
                 log.warning("could not read status from last run of alert_data %s for type %s", alert_data['key'], alert_data['type'])
 
@@ -573,7 +574,7 @@ class Alerter:
                 else:
                     self.check_alert(alert_data)
 
-            if not _alerts:
+            if not _alerts and action:
                 action(rule)
 
     @classmethod
