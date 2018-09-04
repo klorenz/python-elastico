@@ -175,6 +175,9 @@ class Notifier(BaseNotifier):
             #if message
             plain = message.get('plain', '{message.text}\n\n---------\n\n{message.data}')
             text  = message.get('text', '')
+            if isinstance(text, dict):
+                text = text.get(rule.get('status', 'alert'), '')
+
             text  = rule.format(text, Config(kwargs))
             plain = rule.format(plain, Config(kwargs), Config({'message': {'data': data, 'text': text}}))
             html  = markdown.markdown(plain)
@@ -195,7 +198,7 @@ class Notifier(BaseNotifier):
         notifier = notify_class(self.config, notify_spec)
         notifier.notify(message, notify_spec, data)
 
-    def notify(self, notify=None, data=None, subject=None):
+    def notify(self, notify=None, data=None, subject=None, text=None):
         if data is None:
             data = self.data
         if notify is None:
