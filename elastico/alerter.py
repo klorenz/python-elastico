@@ -261,6 +261,8 @@ class Alerter:
 
         # first check if totals are within given bounds
         _result = False
+        if min_total is None and max_total is None:
+            _result = results['hits']['total'] > 0
         if min_total is not None and max_total is not None:
             _result = results['hits']['total'] >= min_total
             _result = _result and results['hits']['total'] <= max_total
