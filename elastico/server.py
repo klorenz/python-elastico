@@ -65,12 +65,18 @@ class Server:
                 log.error("fatal error running server function -- "
                     "message=%r error_count=%r, args=%r", e, error_count, e.args[1:], exc_info=1)
 
+                errors_max = self.get_value('serve.errors_max')
+                check_errors_max = errors_max is not None and errors_max > -1
+
                 notifier = Notifier(self.config, prefixes=[self.prefix])
                 alerts = get_alerts(self.get_value('serve.alerts', []), context=self.config)
                 for alert in alerts:
                     if error_count >= alert.get('error_count', 1):
                         notify = alert.get('notify', [])
                         subject = '[elastico] %s -- exception in server function' % alert.get('type', 'error')
+
+                        if check_errors_max and error_count > errors_max:
+                            subject = '[elastico] too many errors, giving up' % error_count
 
                         notifier.notify(notify=notify, data=Config({
                             'message': {
@@ -80,10 +86,7 @@ class Server:
                             }
                         }))
 
-                if error_count > 10:
-                    subject = '[elastico] too many errors, giving up' % error_count
-
-                if error_count > 10:
+                if check_errors_max and error_count > errors_max:
                     sys.exit(1)
 
             time.sleep(sleep_seconds)
