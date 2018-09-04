@@ -244,3 +244,9 @@ def run_command(kwargs, data=None):
 
     return (result, stdout, stderr)
 
+
+def stripped(s, count=100):
+    if len(s) > count:
+        _s = s[:count]+"..."
+    return _s
+

@@ -15,6 +15,8 @@ import logging, sys, json, pyaml, re
 log = logging.getLogger('elastico.alerter')
 
 from .util import to_dt, PY3, dt_isoformat, format_value, get_config_value
+from .util import stripped
+
 from .config import Config
 
 if PY3:
@@ -251,7 +253,7 @@ class Alerter:
         if rule['match_hits_total']:
             rule['match_hit'] = Config.object(results['hits']['hits'][0])
 
-        log.info("key=%r type=%r hits_total=%r index=%r match_query=%s",
+        log.info("match -- key=%r type=%r hits_total=%r index=%r match_query=%s",
             key, type, results['hits']['total'], index, rule['match_query'])
 
         # there should be at least min_matches
@@ -297,7 +299,8 @@ class Alerter:
         else:
             input = None
 
-        log.info("run_command: kwargs=%s", kwargs)
+        log.debug("run_command: kwargs=%s", kwargs)
+
         p = Popen(stdout=PIPE, stderr=PIPE, **kwargs)
         (stdout, stderr) = p.communicate(input)
         result = p.wait()
@@ -318,10 +321,16 @@ class Alerter:
         return (result, stdout, stderr)
 
     def do_command_succeeds(self, alert_data):
-        cmd = alert_data.get('command_succeeds')
+        cmd = alert_data.getval('command_succeeds')
         (result, stdout, stderr) = self.do_some_command(cmd, alert_data)
 
-        _result = not (result == alert_data.get('expect.code', 0))
+        expect_code = alert_data.get('expect.code', 0)
+
+        log.info("command_succeeds -- "
+            "cmd=%r result=%r expect=%r stdout=%r stderr=%r",
+            cmd, result, expect_code, stripped(stdout), stripped(stderr))
+
+        _result = not (result == expect_code)
         alert_data['alert_trigger'] = _result
         return _result
 
@@ -329,7 +338,13 @@ class Alerter:
         cmd = alert_data.get('command_fails')
         (result, stdout, stderr) = self.do_some_command(cmd, alert_data)
 
-        _result = not (result != alert_data.get('expect.code', 0))
+        expect_code = alert_data.get('expect.code', 0)
+
+        log.info("command_fails -- "
+            "cmd=%r result=%r expect=%r stdout=%r stderr=%r",
+            cmd, result, expect_code, stripped(stdout), stripped(stderr))
+
+        _result = not (result != expect_code)
         alert_data['alert_trigger'] = _result
         return _result
 
@@ -347,7 +362,7 @@ class Alerter:
 
                 if last_rule is not None:
                     status = last_rule['status']
-                log.info("current_status=%r", last_rule)
+                log.debug("current_status=%r", last_rule)
             except:
                 log.warning("could not read status from last run of alert_data %s for type %s", alert_data['key'], alert_data['type'])
 
