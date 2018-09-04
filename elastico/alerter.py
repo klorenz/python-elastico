@@ -40,6 +40,7 @@ class Alerter:
 
     here more doc.
     '''
+    LAST_CHECK = {}
 
     def __init__(self, es_client=None, config={}, config_base="alerter"):
         self.es = es_client
@@ -589,10 +590,20 @@ class Alerter:
 
                 log.debug("alert_data: %s", alert_data)
 
-                if action:
-                    action(alert_data)
+                # check only every now and then. default 5min
+                every = timedelta(**alert_data.get('every', {'minutes': 5}))
+                now = to_dt(self.config['at'])
+                last_check = Alerter.LAST_CHECK.get(visit_key, now - every - timedelta(seconds=1))
+
+                if (now - every) > last_check:
+                    if action:
+                        action(alert_data)
+                    else:
+                        self.check_alert(alert_data)
+
+                    Alerter.LAST_CHECK[visit_key] = now
                 else:
-                    self.check_alert(alert_data)
+                    log.info("      next check in %s", every - (now-last_check))
 
             if not _alerts and action:
                 action(rule)
