@@ -84,6 +84,7 @@ class Alerter:
             if 'match_query' in rule and not isinstance(rule['match_query'], string):
                 rule['match_query'] = json.dumps(rule['match_query'])
 
+
             result = self.es.index(index=index, doc_type="elastico_alert_status", body=rule)
             #self.es.indices.refresh(index)
             log.debug("index result: %s", result)
@@ -121,31 +122,33 @@ class Alerter:
         log.debug("read_status storage_type=%r, key=%r, type=%s", storage_type, key, type)
 
         if storage_type == 'elasticsearch':
-            if self.status_index_dirty:
-                self.refresh_status_storage_index()
+            try:
+                if self.status_index_dirty:
+                    self.refresh_status_storage_index()
 
-            results = self.es.search(index="elastico-alerter-*", body={
-                'query': {'bool': {'must': [
-                    {'term': {'key': key}},
-                    {'term': {'type': type}}
-                ]}},
-                'sort': [{'@timestamp': 'desc'}],
-                'size': 1
-            })
+                results = self.es.search(index="elastico-alerter-*", body={
+                    'query': {'bool': {'must': [
+                        {'term': {'key': key}},
+                        {'term': {'type': type}}
+                    ]}},
+                    'sort': [{'@timestamp': 'desc'}],
+                    'size': 1
+                })
 
-            if results['hits']['total']:
-                result = results['hits']['hits'][0]['_source']
-                if 'match' in result:
-                    try:
-                        result['match'] = json.loads(result['match'])
-                    except:
-                        pass
-                if 'match_query' in result:
-                    try:
-                        result['match_query'] = json.loads(result['match_query'])
-                    except:
-                        pass
-                return result
+                if results['hits']['total']:
+                    result = results['hits']['hits'][0]['_source']
+                    if 'match' in result:
+                        try:
+                            result['match'] = json.loads(result['match'])
+                        except:
+                            pass
+                    if 'match_query' in result:
+                        try:
+                            result['match_query'] = json.loads(result['match_query'])
+                        except:
+                            pass
+                    return result
+
             else:
                 return None
 
@@ -236,11 +239,18 @@ class Alerter:
 
         assert index, "index must be present in rule %s" % rule.getval('name')
         rule['match_query'] = body
+
+        key = rule.getval('key')
+        type = rule.getval('type')
+
         results = self.es.search(index=index, body=body)
         log.debug("results: %s", results)
         rule['match_hits_total'] = results['hits']['total']
         if rule['match_hits_total']:
             rule['match_hit'] = Config.object(results['hits']['hits'][0])
+
+        log.info("key=%r type=%r hits_total=%r index=%r match_query=%s",
+            key, type, results['hits']['total'], index, rule['match_query'])
 
         # there should be at least min_matches
         min_total = rule.get('matches_min')
@@ -335,7 +345,7 @@ class Alerter:
 
                 if last_rule is not None:
                     status = last_rule['status']
-                log.warning("last_rule: %s", last_rule)
+                log.info("current_status=%r", last_rule)
             except:
                 log.warning("could not read status from last run of alert_data %s for type %s", alert_data['key'], alert_data['type'])
 
@@ -361,7 +371,7 @@ class Alerter:
                  delta = timedelta(**alert_data.get('realert', {'minutes': 60}))
                  wait_time = delta - ( to_dt(self.config['at']) -
                     to_dt(last_rule['@timestamp']) )
-                 log.info("delta=%r wait_time=%r", delta, wait_time)
+                 log.debug("delta=%r wait_time=%r", delta, wait_time)
 
                  if wait_time > timedelta(0):
                      alert_data['status'] = 'wait-realert'
