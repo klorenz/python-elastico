@@ -1,6 +1,7 @@
 import sys, yaml, os, pytz, pyaml, json
 from os.path import exists, join, isdir
 from subprocess import Popen, PIPE
+from copy import deepcopy
 
 if (sys.version_info > (3, 0)):
     PY3 = True
@@ -249,4 +250,17 @@ def stripped(s, count=100):
     if len(s) > count:
         _s = s[:count]+"..."
     return _s
+
+def get_alerts(_alerts, context):
+    from .config import Config
+
+    if isinstance(_alerts, dict):
+        _tmp = []
+        for k,v in _alerts.items():
+            _value = Config.object({'type': context.format(k)})
+            _value.update(deepcopy(v))
+            _tmp.append(_value)
+        _alerts = _tmp
+
+    return _alerts
 

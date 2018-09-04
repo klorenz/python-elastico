@@ -4,7 +4,7 @@ import sys
 from datetime import datetime, timedelta
 from .notifier import Notifier
 from .config import Config
-from .util import to_dt, dt_isoformat
+from .util import to_dt, dt_isoformat, get_alerts
 
 log = logging.getLogger('elastico.server')
 
@@ -63,22 +63,25 @@ class Server:
                 error_count += 1
 
                 log.error("fatal error running server function -- "
-                    "message=%r error_count=%r", e, error_count, exc_info=1)
+                    "message=%r error_count=%r, args=%r", e, error_count, e.args[1:], exc_info=1)
 
                 notifier = Notifier(self.config, prefixes=[self.prefix])
-                notify = self.get_value('serve.error_notify', [])
-                subject = '[elastico] fatal error in server function'
+                alerts = get_alerts(self.get_value('serve.alerts', []), context=self.config)
+                for alert in alerts:
+                    if error_count >= alert.get('error_count', 1):
+                        notify = alert.get('notify', [])
+                        subject = '[elastico] %s -- exception in server function' % alert.get('type', 'error')
+
+                        notifier.notify(notify=notify, data=Config({
+                            'message': {
+                                'subject': subject,
+                                'text': "error_count=%s\nargs=%r\n\n" % (error_count, args) +
+                                    traceback.format_exc()
+                            }
+                        }))
 
                 if error_count > 10:
                     subject = '[elastico] too many errors, giving up' % error_count
-
-                notifier.notify(notify=notify, data=Config({
-                    'message': {
-                        'subject': subject,
-                        'text': "error_count=%s\n\n" % error_count +
-                            traceback.format_exc()
-                    }
-                }))
 
                 if error_count > 10:
                     sys.exit(1)

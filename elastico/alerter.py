@@ -15,7 +15,7 @@ import logging, sys, json, pyaml, re
 log = logging.getLogger('elastico.alerter')
 
 from .util import to_dt, PY3, dt_isoformat, format_value, get_config_value
-from .util import stripped
+from .util import stripped, get_alerts
 
 from .config import Config
 
@@ -124,37 +124,34 @@ class Alerter:
         log.debug("read_status storage_type=%r, key=%r, type=%s", storage_type, key, type)
 
         if storage_type == 'elasticsearch':
-            try:
-                if self.status_index_dirty:
-                    self.refresh_status_storage_index()
+            if self.status_index_dirty:
+                self.refresh_status_storage_index()
 
-                results = self.es.search(index="elastico-alerter-*", body={
-                    'query': {'bool': {'must': [
-                        {'term': {'key': key}},
-                        {'term': {'type': type}}
-                    ]}},
-                    'sort': [{'@timestamp': 'desc'}],
-                    'size': 1
-                })
+            results = self.es.search(index="elastico-alerter-*", body={
+                'query': {'bool': {'must': [
+                    {'term': {'key': key}},
+                    {'term': {'type': type}}
+                ]}},
+                'sort': [{'@timestamp': 'desc'}],
+                'size': 1
+            })
 
-                if results['hits']['total']:
-                    result = results['hits']['hits'][0]['_source']
-                    if 'match' in result:
-                        try:
-                            result['match'] = json.loads(result['match'])
-                        except:
-                            pass
-                    if 'match_query' in result:
-                        try:
-                            result['match_query'] = json.loads(result['match_query'])
-                        except:
-                            pass
-                    return result
+            if results['hits']['total']:
+                result = results['hits']['hits'][0]['_source']
+                if 'match' in result:
+                    try:
+                        result['match'] = json.loads(result['match'])
+                    except:
+                        pass
+                if 'match_query' in result:
+                    try:
+                        result['match_query'] = json.loads(result['match_query'])
+                    except:
+                        pass
+                return result
 
-                else:
-                    return None
-            except Exception as e:
-                raise
+            else:
+                return None
 
         elif storage_type == 'filesystem':
             storage_path = self.config.get('alerter.status_storage_path')
@@ -236,6 +233,7 @@ class Alerter:
             'size': 1
         }
 
+
     def do_match(self, rule):
         body = self.get_query(rule, 'match')
         index = rule.get('index')
@@ -253,8 +251,6 @@ class Alerter:
         if rule['match_hits_total']:
             rule['match_hit'] = Config.object(results['hits']['hits'][0])
 
-        log.info("match -- key=%r type=%r hits_total=%r index=%r match_query=%s",
-            key, type, results['hits']['total'], index, rule['match_query'])
 
         # there should be at least min_matches
         min_total = rule.get('matches_min')
@@ -268,6 +264,11 @@ class Alerter:
             _result = _result or results['hits']['total'] >= min_total
         if max_total is not None:
             _result = _result or results['hits']['total'] <= max_total
+
+        log.info("match -- key=%r type=%r hits=%r min=%r max=%r trigger=%r "
+            "index=%r match_query=%s",
+            key, type, results['hits']['total'], min_total, max_total, _result,
+            index, rule['match_query'])
 
         rule['alert_trigger'] = _result
         return _result
@@ -357,14 +358,11 @@ class Alerter:
 
         if status is None:
             # get last status of this alert_data
-            try:
-                last_rule = self.read_status(alert_data)
+            last_rule = self.read_status(alert_data)
 
-                if last_rule is not None:
-                    status = last_rule['status']
-                log.debug("current_status=%r", last_rule)
-            except:
-                log.warning("could not read status from last run of alert_data %s for type %s", alert_data['key'], alert_data['type'])
+            if last_rule is not None:
+                status = last_rule['status']
+            log.debug("current_status=%r", last_rule)
 
         if status is None:
             alert_data['status'] = 'ok'
@@ -545,15 +543,7 @@ class Alerter:
 
             log.info("--- rule %s", _name)
 
-            _alerts = r.get('alerts', [])
-
-            if isinstance(_alerts, dict):
-                _tmp = []
-                for k,v in _alerts.items():
-                    _value = Config.object({'type': r.format(k)})
-                    _value.update(deepcopy(v))
-                    _tmp.append(_value)
-                _alerts = _tmp
+            _alerts = get_alerts(r.get('alerts', []), context=r)
 
             for alert in _alerts:
                 log.debug("process alert %s", alert)
