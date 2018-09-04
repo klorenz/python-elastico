@@ -33,8 +33,10 @@ class Server:
         counter = 0
         error_count = 0
         while True:
+            start = datetime.utcnow()
+
             if self.run_now:
-                _at = dt_isoformat(to_dt(datetime.utcnow()), timespec='seconds')
+                _at = dt_isoformat(to_dt(start), timespec='seconds')
             else:
                 _at = dt_isoformat(
                     to_dt(self.config.get('at')) +
@@ -89,5 +91,14 @@ class Server:
                 if check_errors_max and error_count > errors_max:
                     sys.exit(1)
 
-            time.sleep(sleep_seconds)
+            duration = datetime.utcnow() - start
+            log.info("run -- took %s", duration)
+
+            sleep_time = (timedelta(seconds=sleep_seconds) - duration)
+            sleep_time = sleep_time.total_seconds()
+            if sleep_time < 0:
+                log.warning("run took %ss longer than sleep_time", sleep_time*-1)
+                sleep_time = 0
+
+            time.sleep(sleep_time)
             counter += 1
