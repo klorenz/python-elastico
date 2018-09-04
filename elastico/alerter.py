@@ -47,6 +47,7 @@ class Alerter:
         self.config = config
         self.STATUS = {}
         self.status_index_dirty = False
+        self._refreshed = {}
 
     def wipe_status_storage(self):
         '''remove all status storages'''
@@ -235,6 +236,16 @@ class Alerter:
         }
 
 
+    def _refresh_index(self, index):
+        '''make sure index is refreshed at least every 2 minutes'''
+        if index not in self._refreshed:
+            self._refreshed[index] = datetime.utcnow() - timedelta(minutes=3)
+
+        if self._refreshed[index] + timedelta(minutes=2) < datetime.utcnow():
+            self.es.indices.refresh(index)
+            self._refreshed[index] = datetime.utcnow()
+
+
     def do_match(self, rule):
         body = self.get_query(rule, 'match')
         index = rule.get('index')
@@ -245,6 +256,8 @@ class Alerter:
 
         key = rule.getval('key')
         type = rule.getval('type')
+
+        self._refresh_index(index)
 
         results = self.es.search(index=index, body=body)
         log.debug("results: %s", results)
@@ -421,6 +434,7 @@ class Alerter:
         return alert_data
 
     def process_rules(self, action=None, **arguments):
+        self._refreshed = {}
         if 'arguments' not in self.config:
             self.config['arguments'] = {}
 

@@ -22,6 +22,14 @@ def cmd_indices(config):
     for idx in config.get('index.rm.index'):
         es.indices.delete(idx)
 
+@index_command('refresh', arg('index', help="index name(s)", nargs="+"))
+def cmd_indices(config):
+    '''list indices'''
+    from ..connection import elasticsearch
+    es = elasticsearch(config)
+    for idx in config.get('index.refresh.index'):
+        print(es.indices.refresh(idx))
+
     # for idx in es.indices.get('_all').keys():
     # for idx in es.indices.get('_all').keys():
     #     print(idx)
