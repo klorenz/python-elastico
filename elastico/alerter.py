@@ -742,6 +742,7 @@ class Alerter:
                     all_clear.update(rule)
                     all_clear['type'] = 'all-clear'
                     all_clear['status.current'] = 'ok'
+                    all_clear['notify'] = rule_status['notify']
                     self.assert_key(all_clear)
                     all_clear.update(rule.get('all_clear', {}))
                     self.do_alert(all_clear)
