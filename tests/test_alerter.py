@@ -15,12 +15,11 @@ def make_config(s):
 def test_alerter_expand_rules():
     Alerter.reset_last_check()
     Alerter.reset_status()
+
     import logging
     logging.getLogger().setLevel(logging.DEBUG)
 
     config = Config.object("""
-        arguments:
-            at: 2018-05-05 10:02:00
         alerter:
             alert_defaults:
                 honey:
@@ -38,6 +37,7 @@ def test_alerter_expand_rules():
                 - type: boney
                   match: y
     """)
+    config['at'] = '2018-05-05 10:02:00'
 
     data = [x for x in Alerter.expand_rules(config)]
 
@@ -732,8 +732,8 @@ def test_alerter_email(monkeypatch):
                 notification: treebeard
                 transport: email
             status:
-                current: alert
-                previous: ok
+              current: alert
+              previous: ok
             type: hummhomm
             </code></pre>
             --===============11111==--
@@ -745,6 +745,7 @@ def test_alerter_email(monkeypatch):
 #     assert alerter.get_rule_value(rule, "foo.bar") == 'value'
 
 def test_alerter_command():
+    Alerter.reset_status()
 
     alerter = Alerter(config=Config.object("""
         alerter:
