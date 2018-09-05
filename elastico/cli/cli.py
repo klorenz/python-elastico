@@ -1,4 +1,4 @@
-import logging
+import logging, requests
 
 from argdeco import command, main, arg, opt, config_factory
 from os.path import exists, join, expanduser

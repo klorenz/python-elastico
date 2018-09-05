@@ -161,6 +161,9 @@ class Notifier(BaseNotifier):
         log.debug("compose_message_text message=%r, rule=%r, kwargs=%r",
             message, rule, kwargs)
 
+        if isinstance(message, string):
+            message = {'text': message}
+
         import markdown
 
         try:
@@ -175,9 +178,6 @@ class Notifier(BaseNotifier):
             #if message
             plain = message.get('plain', '{message.text}\n\n---------\n\n{message.data}')
             text  = message.get('text', '')
-            if isinstance(text, dict):
-                text = text.get(rule.get('status', 'alert'), '')
-
             text  = rule.format(text, Config(kwargs))
             plain = rule.format(plain, Config(kwargs), Config({'message': {'data': data, 'text': text}}))
             html  = markdown.markdown(plain)
@@ -232,6 +232,7 @@ class Notifier(BaseNotifier):
                     notify_name = notify_spec['notification']
 
                 underscore = Config(data.get('match_hit._source', {}))
+
                 text, data_s, plain, html = self.compose_message_text(
                     data.get('message', {}),
                     data,

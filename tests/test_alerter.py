@@ -14,6 +14,7 @@ def make_config(s):
 
 def test_alerter_expand_rules():
     Alerter.reset_last_check()
+    Alerter.reset_status()
     import logging
     logging.getLogger().setLevel(logging.DEBUG)
 
@@ -47,6 +48,7 @@ def test_alerter_expand_rules():
     import logging
     logging.getLogger().setLevel(logging.DEBUG)
     Alerter.reset_last_check()
+    Alerter.reset_status()
 
     config = Config.object("""
         alerter:
@@ -78,6 +80,7 @@ def test_alerter_expand_rules_foreach():
     import logging
     logging.getLogger().setLevel(logging.DEBUG)
     Alerter.reset_last_check()
+    Alerter.reset_status()
 
     config = Config.object("""
         a_list:
@@ -138,6 +141,7 @@ def test_alerter_expand_rules_foreach():
 
 def test_alerter_alert(monkeypatch):
     Alerter.reset_last_check()
+    Alerter.reset_status()
     alerter = Alerter(config=make_config("""
         alerter:
             rules:
@@ -168,7 +172,7 @@ def test_alerter_alert(monkeypatch):
 
     at_s = dt_isoformat(at)
 
-    assert alerter.STATUS == {
+    assert Alerter.STATUS == {
         'fatal': {
             'test': {
                 'status': 'ok',
@@ -201,6 +205,7 @@ def test_alerter_alert(monkeypatch):
 def test_alerter_alert_elasticsearch(monkeypatch):
     from elastico.connection import elasticsearch
     Alerter.reset_last_check()
+    Alerter.reset_status()
     es = elasticsearch()
 
     try:
@@ -339,6 +344,7 @@ def test_alerter_alert_filesystem(monkeypatch, tmpdir):
 
 def test_alerter_match():
     Alerter.reset_last_check()
+    Alerter.reset_status()
     from elastico.connection import elasticsearch
     from elasticsearch.helpers import bulk
 
@@ -405,7 +411,10 @@ def test_alerter_match():
                         },
                     }
 
-        assert alerter.STATUS == {
+        print("=== check 1 ===")
+        pprint(Alerter.STATUS)
+
+        assert Alerter.STATUS == {
             'fatal': {
                 'value_check': {
                     'name': 'value-check',
@@ -418,10 +427,16 @@ def test_alerter_match():
                     'match_query': _match_query('value:[0 TO 10]', '09:57', '10:02'),
                     'alert_trigger': False,
                     'match_hits_total': 0,
-                    'status': 'ok',
+                    'status': {'current': 'ok', 'previous': 'ok'},
                     'type': 'fatal'
                 }
             },
+            'rule': {'value_check': {'@timestamp': at_s,
+                          'alerts': [],
+                          'key': 'value_check',
+                          'name': 'value-check',
+                          'notify': [],
+                          'type': 'rule'}},
             'warning': {
                 'value_check': {
                     'name': 'value-check',
@@ -434,7 +449,7 @@ def test_alerter_match():
                     'match_query': _match_query('value:[10 TO 13]', '09:57', '10:02'),
                     'alert_trigger': False,
                     'match_hits_total': 0,
-                    'status': 'ok',
+                    'status': {'current': 'ok', 'previous': 'ok'},
                     'type': 'warning'
                 }
             }
@@ -445,7 +460,12 @@ def test_alerter_match():
         alerter.process_rules(at=at)
         at_s = dt_isoformat(at)
 
-        assert alerter.STATUS == {
+        start_s = at_s
+
+        print("=== check 2 ===")
+        pprint(Alerter.STATUS)
+
+        assert Alerter.STATUS == {
             'fatal': {
                 'value_check': {
                     'name': 'value-check',
@@ -470,10 +490,17 @@ def test_alerter_match():
 
                      'alert_trigger': True,
                      'match_hits_total': 2,
-                     'status': 'alert',
+                     'status': {'current': 'alert', 'previous': 'ok'},
                      'type': 'fatal'
                 }
             },
+            'rule': {'value_check': {'@timestamp': at_s,
+                        'start': start_s,
+                          'alerts': [],
+                          'key': 'value_check',
+                          'name': 'value-check',
+                          'notify': [],
+                          'type': 'rule'}},
             'warning': {
                 'value_check': {
                     'name': 'value-check',
@@ -497,12 +524,62 @@ def test_alerter_match():
                     },
                     'alert_trigger': True,
                     'match_hits_total': 2,
-                    'status': 'alert',
+                    'status': {'current': 'alert', 'previous': 'ok'},
                     'type': 'warning'
                 }
             }
         }
 
+        alerter = Alerter(config =_config, es_client=es)
+        at = to_dt("2018-05-05 10:20:00")
+        alerter.process_rules(at=at)
+        at_s = dt_isoformat(at)
+
+        print("=== check 3 ===")
+        pprint(Alerter.STATUS)
+
+        assert Alerter.STATUS == {
+            'fatal': {
+                'value_check': {
+                    'name': 'value-check',
+                    '@timestamp': at_s,
+                    'at': at_s,
+                    'timeframe':{'minutes': 5},
+                    'index': 'test-alerter-match',
+                     'key': 'value_check',
+                     'match': 'value:[0 TO 10]',
+                    'match_query': _match_query('value:[0 TO 10]', '10:15', '10:20'),
+                     'alert_trigger': False,
+                     'match_hits_total': 0,
+                     'status': {'current': 'ok', 'previous': 'alert'},
+                     'type': 'fatal'
+                }
+            },
+            'rule': {'value_check': {'@timestamp': at_s,
+                        'start': start_s,
+                        'end': at_s,
+                          'alerts': ['fatal', 'warning'],
+                          'key': 'value_check',
+                          'name': 'value-check',
+                          'notify': [],
+                          'type': 'rule'}},
+            'warning': {
+                'value_check': {
+                    'name': 'value-check',
+                    '@timestamp': at_s,
+                    'at': at_s,
+                    'timeframe':{'minutes': 5},
+                    'index': 'test-alerter-match',
+                    'key': 'value_check',
+                    'match': 'value:[10 TO 13]',
+                    'match_query': _match_query('value:[10 TO 13]', '10:15', '10:20'),
+                    'alert_trigger': False,
+                    'match_hits_total': 0,
+                    'status': {'current': 'ok', 'previous': 'alert'},
+                    'type': 'warning'
+                }
+            }
+        }
 
 
     finally:
@@ -510,6 +587,7 @@ def test_alerter_match():
 
 def test_alerter_email(monkeypatch):
     Alerter.reset_last_check()
+    Alerter.reset_status()
     alerter = Alerter(config=Config.object("""
         alerter:
             alert_defaults:
@@ -680,8 +758,8 @@ def test_alerter_command():
     at = to_dt("2018-05-05 10:07:00")
     alerter.process_rules(at=at)
 
-    pprint(alerter.STATUS, indent=2)
-    assert alerter.STATUS == {
+    pprint(Alerter.STATUS, indent=2)
+    assert Alerter.STATUS == {
       'hummhomm': { 'test': { '@timestamp': '2018-05-05T10:07:00Z',
       'alert_trigger': True,
       'at': '2018-05-05T10:07:00Z',
