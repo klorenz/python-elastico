@@ -42,6 +42,10 @@ class Alerter:
     '''
     LAST_CHECK = {}
 
+    @classmethod
+    def reset_last_check(cls):
+        Alerter.LAST_CHECK = {}
+
     def __init__(self, es_client=None, config={}, config_base="alerter"):
         self.es = es_client
         self.config = config
@@ -75,8 +79,8 @@ class Alerter:
         if 'at' in rule:
             rule['at'] = dt_isoformat(rule['at'])
 
-        import socket
-        rule['elastico.hostname'] = socket.gethostname()
+        # import socket
+        # rule['elastico.hostname'] = socket.gethostname()
 
         # get data, which is written to any status
         _status = Config(self.config.get('status_data'))
@@ -84,6 +88,7 @@ class Alerter:
         rule.update(_status)
 
         log.debug("rule to write to status: %s", rule)
+        log.debug("storage_type=%r", storage_type)
 
         key  = rule.get('key')
         type = rule.get('type')
@@ -121,6 +126,7 @@ class Alerter:
             if type not in self.STATUS:
                 self.STATUS[type] = {}
             self.STATUS[type][key] = rule
+            log.debug("set status. type=%r key=%r", type, key)
 
     def read_status(self, rule=None, key=None, type=None):
         storage_type = self.config.get('alerter.status_storage', 'memory')
@@ -251,6 +257,8 @@ class Alerter:
         if self._refreshed[index] + timedelta(minutes=2) < datetime.utcnow():
             self.es.indices.refresh(index)
             self._refreshed[index] = datetime.utcnow()
+
+            log.info("refreshed index %s", index)
 
 
     def do_match(self, rule):
@@ -620,12 +628,14 @@ class Alerter:
 
                 # check only every now and then. default 5min
                 every = timedelta(**alert_data.get('every', {'minutes': 5}))
-                now = to_dt(self.config['at'])
+                now = to_dt(self.config.get('at', datetime.utcnow()))
+                log.debug("LAST_CHECK=%r", Alerter.LAST_CHECK)
                 last_check = Alerter.LAST_CHECK.get(visit_key, now - every - timedelta(seconds=1))
+                log.debug("last_check=%s, now=%s, every=%s", last_check, now, every)
 
                 if (now - every) > last_check:
                     if action:
-                        action(alert_data)
+                        action(Config(alert_data))
                     else:
                         self.check_alert(alert_data)
 

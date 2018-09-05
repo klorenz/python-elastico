@@ -182,6 +182,7 @@ class Config(ConfigDict):
         else:
             assert action != 'append', "append requires a config item name"
 
+        log.debug("include_file: path=%s, name=%s, action=%s, _dir=%s", path, name, action, _dir)
         # if action == 'update':
         #     if name is not None:
         #         _file = self[name].get('_file_')

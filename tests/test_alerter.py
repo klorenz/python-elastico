@@ -4,6 +4,7 @@ from elastico.util import PY3, to_dt, dt_isoformat
 from elastico.alerter import Alerter
 from elastico.config import Config
 from pprint import pprint
+from elastico.notifier import Notifier
 
 if PY3:
     unicode = str
@@ -12,6 +13,7 @@ def make_config(s):
     return Config.object(s)
 
 def test_alerter_expand_rules():
+    Alerter.reset_last_check()
     import logging
     logging.getLogger().setLevel(logging.DEBUG)
 
@@ -44,6 +46,7 @@ def test_alerter_expand_rules():
 def test_alerter_expand_rules():
     import logging
     logging.getLogger().setLevel(logging.DEBUG)
+    Alerter.reset_last_check()
 
     config = Config.object("""
         alerter:
@@ -74,6 +77,7 @@ def test_alerter_expand_rules():
 def test_alerter_expand_rules_foreach():
     import logging
     logging.getLogger().setLevel(logging.DEBUG)
+    Alerter.reset_last_check()
 
     config = Config.object("""
         a_list:
@@ -133,6 +137,7 @@ def test_alerter_expand_rules_foreach():
 
 
 def test_alerter_alert(monkeypatch):
+    Alerter.reset_last_check()
     alerter = Alerter(config=make_config("""
         alerter:
             rules:
@@ -195,6 +200,7 @@ def test_alerter_alert(monkeypatch):
 
 def test_alerter_alert_elasticsearch(monkeypatch):
     from elastico.connection import elasticsearch
+    Alerter.reset_last_check()
     es = elasticsearch()
 
     try:
@@ -263,6 +269,7 @@ def test_alerter_alert_elasticsearch(monkeypatch):
 
 def test_alerter_alert_filesystem(monkeypatch, tmpdir):
     from elastico.connection import elasticsearch
+    Alerter.reset_last_check()
     es = elasticsearch()
 
     try:
@@ -331,6 +338,7 @@ def test_alerter_alert_filesystem(monkeypatch, tmpdir):
         alerter.wipe_status_storage()
 
 def test_alerter_match():
+    Alerter.reset_last_check()
     from elastico.connection import elasticsearch
     from elasticsearch.helpers import bulk
 
@@ -501,6 +509,7 @@ def test_alerter_match():
         es.indices.delete(index)
 
 def test_alerter_email(monkeypatch):
+    Alerter.reset_last_check()
     alerter = Alerter(config=Config.object("""
         alerter:
             alert_defaults:
@@ -767,7 +776,7 @@ def test_do_alert(monkeypatch):
  'type': 'the_type'}
 
 def test_compose_message():
-    notifier = Notifier({})
+    notifier = Notifier(Config())
 
     (text, data, plain, html) = notifier.compose_message_text(
         {'text': 'hello {name.firstname}', 'plain': '{message.text}'},
