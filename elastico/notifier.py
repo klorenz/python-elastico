@@ -176,7 +176,7 @@ class Notifier(BaseNotifier):
 
         try:
             #if message
-            plain = message.get('plain', '{message.text}\n\n---------\n\n{message.data}')
+            plain = message.get('plain', '{message.text}\n---------\n\n{message.data}')
             text  = message.get('text', '')
             text  = rule.format(text, Config(kwargs))
             plain = rule.format(plain, Config(kwargs), Config({'message': {'data': data, 'text': text}}))

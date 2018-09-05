@@ -65,7 +65,7 @@ class Alerter:
         return result
 
     def get_status_storage_index(self):
-        date = to_dt(self.config['at'])
+        date = self.now()
         return date.strftime('elastico-alerter-%Y-%m-%d')
 
     def refresh_status_storage_index(self):
@@ -75,13 +75,16 @@ class Alerter:
             except:
                 pass
 
+    def now(self):
+        return to_dt(self.config.get('at', datetime.utcnow()))
+
     def write_status(self, rule, doc_type='elastico_alert_status'):
         storage_type = self.config.get('alerter.status_storage', 'memory')
 
         now = to_dt(dt_isoformat(datetime.utcnow(), 'T', 'seconds'))
 
         #rule['@timestamp'] = to_dt(self.get_rule_value(rule, 'run_at', now))
-        rule['@timestamp'] = timestamp = dt_isoformat(self.config['at'])
+        rule['@timestamp'] = timestamp = dt_isoformat(self.now())
         if 'at' in rule:
             rule['at'] = dt_isoformat(rule['at'])
 
@@ -242,7 +245,7 @@ class Alerter:
         if 'endtime' in rule:
             endtime = to_dt(rule.getval('endtime'))
         else:
-            endtime = to_dt(self.config['at'])
+            endtime = self.now()
 
         if 'starttime' in rule:
             starttime = to_dt(rule.getval('starttime'))
@@ -264,17 +267,19 @@ class Alerter:
 
     def _refresh_index(self, index):
         '''make sure index is refreshed at least every 2 minutes'''
-        if index not in self._refreshed:
-            self._refreshed[index] = datetime.utcnow() - timedelta(minutes=3)
+        if self.es:
+            if index not in self._refreshed:
+                self._refreshed[index] = datetime.utcnow() - timedelta(minutes=3)
 
-        if self._refreshed[index] + timedelta(minutes=2) < datetime.utcnow():
-            self.es.indices.refresh(index)
-            self._refreshed[index] = datetime.utcnow()
+            if self._refreshed[index] + timedelta(minutes=2) < datetime.utcnow():
+                self.es.indices.refresh(index)
+                self._refreshed[index] = datetime.utcnow()
 
-            log.info("refreshed index %s", index)
+                log.info("refreshed index %s", index)
 
 
     def do_match(self, rule):
+
         body = self.get_query(rule, 'match')
         index = rule.get('index')
         body['size'] = 1
@@ -285,14 +290,16 @@ class Alerter:
         key = rule.getval('key')
         type = rule.getval('type')
 
-        self._refresh_index(index)
-
-        results = self.es.search(index=index, body=body)
-        log.debug("results: %s", results)
-        rule['match_hits_total'] = results['hits']['total']
-        if rule['match_hits_total']:
-            rule['match_hit'] = Config.object(results['hits']['hits'][0])
-
+        if self.es:
+            self._refresh_index(index)
+            results = self.es.search(index=index, body=body)
+            log.debug("results: %s", results)
+            rule['match_hits_total'] = results['hits']['total']
+            if rule['match_hits_total']:
+                rule['match_hit'] = Config.object(results['hits']['hits'][0])
+        else:
+            rule['match_hits_total'] = 0
+            results = {'hits': {'total': 0}}
 
         # there should be at least min_matches
         min_total = rule.get('matches_min')
@@ -451,7 +458,7 @@ class Alerter:
                 delta = timedelta(**realert)
 
                 # calculate wait time till next re-alert
-                now = to_dt(self.config['at'])
+                now = self.now()
                 wait_time = delta - ( now - to_dt(last_rule['@timestamp']) )
 
                 log.debug("delta=%r wait_time=%r", delta, wait_time)
@@ -524,7 +531,7 @@ class Alerter:
 
         has_foreach = False
 
-        now = to_dt(self.config.get('at', datetime.utcnow()))
+        now = self.now()
 
         # create a product of all items in 'each' to multiply the rule
         if 'foreach' in rule:

@@ -19,6 +19,8 @@ def test_alerter_expand_rules():
     logging.getLogger().setLevel(logging.DEBUG)
 
     config = Config.object("""
+        arguments:
+            at: 2018-05-05 10:02:00
         alerter:
             alert_defaults:
                 honey:
@@ -40,8 +42,8 @@ def test_alerter_expand_rules():
     data = [x for x in Alerter.expand_rules(config)]
 
     assert data == [
-        {'a': 'a_value', 'key': 'foo', 'foo': 'bar', 'match': 'x', 'type': 'honey', 'index': 'an_index', 'name': 'foo'},
-        {'b': 'bar', 'key': 'foo', 'foo': 'bar', 'match': 'y', 'type': 'boney', 'index': 'an_index', 'name': 'foo'}
+        {'a': 'a_value', 'key': 'foo', 'foo': 'bar', 'type': 'honey', 'index': 'an_index', 'name': 'foo'},
+        {'b': 'bar', 'key': 'foo', 'foo': 'bar', 'type': 'boney', 'index': 'an_index', 'name': 'foo'}
         ]
 
 def test_alerter_expand_rules():
@@ -172,10 +174,11 @@ def test_alerter_alert(monkeypatch):
 
     at_s = dt_isoformat(at)
 
+    pprint(Alerter.STATUS)
     assert Alerter.STATUS == {
         'fatal': {
             'test': {
-                'status': 'ok',
+                'status': {'current': 'ok', 'previous': 'ok'},
                 '@timestamp': at_s,
                 'at': at_s,
                 'alert_trigger': False,
@@ -186,12 +189,19 @@ def test_alerter_alert(monkeypatch):
                 'match_hits_total': 0
             }
         },
+        'rule': {'test': {'@timestamp': '2018-05-05T10:07:00Z',
+                   'alerts': [],
+                   'key': 'test',
+                   'name': 'test',
+                   'notify': [],
+                   'start': '2018-05-05T10:07:00Z',
+                   'type': 'rule'}},
         'warning': {
             'test': {
                 'name': 'test',
                 '@timestamp': at_s,
                 'at': at_s,
-                'status': 'alert',
+                'status': {'current': 'alert', 'previous': 'ok'},
                 'match_hit': {'foo': 'bar'},
                 'alert_trigger': True,
                 'key': 'test',
@@ -249,7 +259,7 @@ def test_alerter_alert_elasticsearch(monkeypatch):
                 '@timestamp': at_s,
                 'at': at_s,
                 'name': 'test',
-                'status': 'ok',
+                'status': {'current': 'ok', 'previous': 'ok'},
                 'alert_trigger': False,
                 'key': 'test',
                 'type': 'fatal',
@@ -260,7 +270,7 @@ def test_alerter_alert_elasticsearch(monkeypatch):
                 '@timestamp': at_s,
                 'at': at_s,
                 'name': 'test',
-                'status': 'alert',
+                'status': {'current': 'alert', 'previous': 'ok'},
                 'match_hit': {'foo': 'bar'},
                 'alert_trigger': True,
                 'key': 'test',
@@ -275,6 +285,7 @@ def test_alerter_alert_elasticsearch(monkeypatch):
 def test_alerter_alert_filesystem(monkeypatch, tmpdir):
     from elastico.connection import elasticsearch
     Alerter.reset_last_check()
+    Alerter.reset_status()
     es = elasticsearch()
 
     try:
@@ -319,7 +330,7 @@ def test_alerter_alert_filesystem(monkeypatch, tmpdir):
                 '@timestamp': at_s,
                 'at': at_s,
                 'name': 'test',
-                'status': 'ok',
+                'status': {'current': 'ok', 'previous': 'ok'},
                 'alert_trigger': False,
                 'key': 'test',
                 'type': 'fatal',
@@ -330,7 +341,7 @@ def test_alerter_alert_filesystem(monkeypatch, tmpdir):
                 '@timestamp': at_s,
                 'at': at_s,
                 'name': 'test',
-                'status': 'alert',
+                'status': {'current': 'alert', 'previous': 'ok'},
                 'match_hit': {'foo': 'bar'},
                 'alert_trigger': True,
                 'key': 'test',
@@ -558,7 +569,7 @@ def test_alerter_match():
             'rule': {'value_check': {'@timestamp': at_s,
                         'start': start_s,
                         'end': at_s,
-                          'alerts': ['fatal', 'warning'],
+                          'alerts': list(set(['fatal', 'warning'])),
                           'key': 'value_check',
                           'name': 'value-check',
                           'notify': [],
@@ -673,6 +684,8 @@ def test_alerter_email(monkeypatch):
 
             humm homm
 
+            ---------
+
                 alert_trigger: true
                 at: 2018-05-05 10:07:00+00:00
                 key: test
@@ -689,7 +702,9 @@ def test_alerter_email(monkeypatch):
                       to: 'treebeard@middle.earth'
                     notification: treebeard
                     transport: email
-                status: alert
+                status:
+                  current: alert
+                  previous: ok
                 type: hummhomm
 
 
@@ -699,6 +714,7 @@ def test_alerter_email(monkeypatch):
             Content-Transfer-Encoding: 7bit
 
             <p>humm homm</p>
+            <hr />
             <pre><code>alert_trigger: true
             at: 2018-05-05 10:07:00+00:00
             key: test
@@ -715,7 +731,9 @@ def test_alerter_email(monkeypatch):
                   to: 'treebeard@middle.earth'
                 notification: treebeard
                 transport: email
-            status: alert
+            status:
+                current: alert
+                previous: ok
             type: hummhomm
             </code></pre>
             --===============11111==--
@@ -737,21 +755,27 @@ def test_alerter_command():
                     stdout: true
 
             alert_defaults:
-                hummhomm:
+                hummhomm1:
+                    notify:
+                      - sound
+                hummhomm2:
+                    notify:
+                      - sound
+                hummhomm3:
                     notify:
                       - sound
 
             rules:
                 - name: test
                   alerts:
-                  - type: hummhomm
-                    command_succeeds: >
+                    hummhomm1:
+                      command_succeeds: >
                         bash -c "exit 0"
-                  - type: hummhomm
-                    command_fails: >
+                    hummhomm2:
+                      command_fails: >
                         bash -c "exit 1"
-                  - type: hummhomm
-                    command_succeeds: >
+                    hummhomm3:
+                      command_succeeds: >
                         bash -c "exit 1"
     """))
 
@@ -760,31 +784,57 @@ def test_alerter_command():
 
     pprint(Alerter.STATUS, indent=2)
     assert Alerter.STATUS == {
-      'hummhomm': { 'test': { '@timestamp': '2018-05-05T10:07:00Z',
-      'alert_trigger': True,
-      'at': '2018-05-05T10:07:00Z',
-      'command_succeeds': 'bash -c "exit 1"\n',
-      'key': 'test',
-      'name': 'test',
-      'notifications': { 'sound': { 'command': 'echo '
-                                               "'humm'",
-                                    'message': { 'subject': '[elastico] '
-                                                            'ALERT '
-                                                            '- '
-                                                            'hummhomm '
-                                                            'test',
-                                                 'text': ''},
-                                    'notification': 'sound',
-                                    'result': { 'exit_code': 0,
-                                                'stdout': b'humm'},
-                                    'status': 'ok',
-                                    'stdout': True,
-                                    'transport': 'command'}},
-      'notify': ['sound'],
-      'result': {'exit_code': 1},
-      'status': 'alert',
-      'type': 'hummhomm'}}}
-
+        'hummhomm1': { 'test': { '@timestamp': '2018-05-05T10:07:00Z',
+                           'alert_trigger': False,
+                           'at': '2018-05-05T10:07:00Z',
+                           'command_succeeds': 'bash -c "exit 0"\n',
+                           'key': 'test',
+                           'name': 'test',
+                           'notify': ['sound'],
+                           'result': {'exit_code': 0},
+                           'status': {'current': 'ok', 'previous': 'ok'},
+                           'type': 'hummhomm1'}},
+  'hummhomm2': { 'test': { '@timestamp': '2018-05-05T10:07:00Z',
+                           'alert_trigger': False,
+                           'at': '2018-05-05T10:07:00Z',
+                           'command_fails': 'bash -c "exit 1"\n',
+                           'key': 'test',
+                           'name': 'test',
+                           'notify': ['sound'],
+                           'result': {'exit_code': 1},
+                           'status': {'current': 'ok', 'previous': 'ok'},
+                           'type': 'hummhomm2'}},
+  'hummhomm3': { 'test': { '@timestamp': '2018-05-05T10:07:00Z',
+                           'alert_trigger': True,
+                           'at': '2018-05-05T10:07:00Z',
+                           'command_succeeds': 'bash -c "exit 1"\n',
+                           'key': 'test',
+                           'name': 'test',
+                           'notifications': { 'sound': { 'command': 'echo '
+                                                                    "'humm'",
+                                                         'message': { 'subject': '[elastico] '
+                                                                                 'ALERT '
+                                                                                 '- '
+                                                                                 'hummhomm3 '
+                                                                                 'test',
+                                                                      'text': ''},
+                                                         'notification': 'sound',
+                                                         'result': { 'exit_code': 0,
+                                                                     'stdout': b'humm'},
+                                                         'status': 'ok',
+                                                         'stdout': True,
+                                                         'transport': 'command'}},
+                           'notify': ['sound'],
+ 'result': {'exit_code': 1},
+                           'status': {'current': 'alert', 'previous': 'ok'},
+                           'type': 'hummhomm3'}},
+  'rule': { 'test': { '@timestamp': '2018-05-05T10:07:00Z',
+                      'alerts': [],
+                      'key': 'test',
+                      'name': 'test',
+                      'notify': [],
+                      'start': '2018-05-05T10:07:00Z',
+                      'type': 'rule'}}}
 
 
 def test_do_alert(monkeypatch):
@@ -805,6 +855,7 @@ def test_do_alert(monkeypatch):
         'key': 'the_key',
         'type': 'the_type',
         'name': 'the_name',
+        'status': {'current': 'alert'},
         'notify': [
             'an-email'
         ]
@@ -850,7 +901,7 @@ def test_do_alert(monkeypatch):
                  'status': 'dry_run',
                  'transport': 'email'}},
  'notify': ['an-email'],
- 'status': 'alert',
+ 'status': {'current': 'alert'},
  'type': 'the_type'}
 
 def test_compose_message():
