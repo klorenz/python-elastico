@@ -11,8 +11,11 @@ Contents:
 .. toctree::
    :maxdepth: 2
 
+   configuration
+   alerter/index
+
 .. todo::
-        
+
     - document usage of index
     - document usage of alerter
 

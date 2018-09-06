@@ -58,6 +58,12 @@ class EmailNotifier(BaseNotifier):
         smtp_ssl     = _get('smtp.ssl', False)
         smtp_port    = _get('smtp.port', 0)
 
+        try:
+            (username, password) = get_netrc_login_data_from_value(_get('smtp.netrc', {}))
+        except LookupError:
+            username = _get('smtp.username', None)
+            password = _get('smtp.password', None)
+
         email_from   = _get('email.from', 'noreply')
         email_cc     = _get('email.cc', [])
         email_to     = _get('email.to', [])
@@ -116,8 +122,8 @@ class EmailNotifier(BaseNotifier):
                 host=smtp_host,
                 port=smtp_port,
                 use_ssl=smtp_ssl,
-                username=None,
-                password=None,
+                username=username,
+                password=password,
                 sender=email_from,
                 recipients=recipients,
                 message=email_message

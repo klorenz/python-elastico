@@ -62,7 +62,9 @@ def get_netrc_login_data(data, name):
     """
     # netrc configuration
     nrc = data.get(name, {})
+    return get_netrc_login_data_from_value(nrc)
 
+def get_netrc_login_data_from_value(nrc):
     if not nrc:
         raise LookupError("no netrc data present")
 
@@ -191,6 +193,12 @@ def run_command(kwargs, data=None):
         kwargs = {'args': kwargs, 'shell': True}
     elif isinstance(kwargs, (list, tuple)):
         kwargs = {'args': kwargs}
+    else:
+        kwargs = dict(kwargs)
+
+    if isinstance(kwargs['args'], string):
+        if 'shell' not in kwargs:
+            kwargs['shell'] = True
 
     def _get_capture_value(name):
         if name in kwargs:
