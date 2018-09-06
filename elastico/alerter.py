@@ -730,8 +730,9 @@ class Alerter:
                 log.debug("was_ok=%r now_ok=%r was_alert=%r", was_ok, now_ok, was_alert)
 
                 # update rule status
-                if was_ok and not now_ok:
+                if was_ok and not now_ok or 'status.start' not in rule_status:
                     rule_status['status.start'] = dt_isoformat(now)
+
 
                 # all related alerts and records will get this id
                 rule_status['status.id'] = '{}_{}'.format(
