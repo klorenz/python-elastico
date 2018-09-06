@@ -696,7 +696,7 @@ class Alerter:
                         l = [l]
                     return l
 
-                log.info("rule: %r", r)
+                log.debug("rule: %r", r)
 
                 self.assert_key(r)
 
@@ -743,7 +743,7 @@ class Alerter:
                     rule_status['end'] = dt_isoformat(now)
 
                     all_clear = Config.object()
-                    all_clear.update(rule)
+                    all_clear.update(r)
                     all_clear['type'] = 'all-clear'
                     all_clear['status.current'] = 'ok'
                     all_clear['notify'] = rule_status['notify']
