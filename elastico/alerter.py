@@ -672,8 +672,8 @@ class Alerter:
 
                 log.debug("alert_data: %s", alert_data)
 
-                # check only every now and then. default 5min
-                every = timedelta(**alert_data.get('every', {'minutes': 5}))
+                # check only every now and then. default 2min
+                every = timedelta(**alert_data.get('every', {'minutes': 1}))
                 log.debug("LAST_CHECK=%r", Alerter.LAST_CHECK)
                 last_check = Alerter.LAST_CHECK.get(visit_key, now - every - timedelta(seconds=1))
                 log.debug("last_check=%s, now=%s, every=%s", last_check, now, every)
