@@ -81,8 +81,6 @@ class Alerter:
     def write_status(self, rule, doc_type='elastico_alert_status'):
         storage_type = self.config.get('alerter.status_storage', 'memory')
 
-        now = to_dt(dt_isoformat(datetime.utcnow(), 'T', 'seconds'))
-
         #rule['@timestamp'] = to_dt(self.get_rule_value(rule, 'run_at', now))
         rule['@timestamp'] = timestamp = dt_isoformat(self.now())
         if 'at' in rule:
@@ -465,12 +463,15 @@ class Alerter:
                 except:
                     delta = timedelta(**realert)
 
-                wait_time = delta - (now - to_dt(last_rule['@timestamp']))
+                time_passed = now - to_dt(last_rule['@timestamp'])
 
-                log.debug("delta=%r wait_time=%r", delta, wait_time)
+                log.debug("delta=%r time_passed=%r", delta, time_passed)
 
                 # if there is still wait time left,
-                if wait_time > timedelta(0):
+                if delta > time_passed:
+                    wait_time = delta - time_passed
+                    log.debug("wait_time=%r", wait_time)
+
                     #alert_data['status.realert'] = 'wait'
                     alert_data['status.realert'] = wait_time.total_seconds()
                     log.warning("      trigger alert -> wait for realert (%s)", wait_time)
@@ -678,7 +679,7 @@ class Alerter:
 
                 # check only every now and then. default 2min
                 every = timedelta(**alert_data.get('every', {'minutes': 1}))
-                log.debug("LAST_CHECK=%r", Alerter.LAST_CHECK)
+                #log.debug("LAST_CHECK=%r", Alerter.LAST_CHECK)
                 last_check = Alerter.LAST_CHECK.get(visit_key, now - every - timedelta(seconds=1))
                 log.debug("last_check=%s, now=%s, every=%s", last_check, now, every)
 
