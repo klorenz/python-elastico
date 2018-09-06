@@ -733,13 +733,13 @@ class Alerter:
                 log.debug("was_ok=%r now_ok=%r was_alert=%r", was_ok, now_ok, was_alert)
 
                 # update rule status
-                if was_ok and not now_ok or 'status.start' not in rule_status:
+                if was_ok and not now_ok:
                     rule_status['status.start'] = dt_isoformat(now)
 
+                    # all related alerts and records will get this id
+                    rule_status['status.id'] = '{}_{}'.format(
+                        rule_status['key'], rule_status['status.start'])
 
-                # all related alerts and records will get this id
-                rule_status['status.id'] = '{}_{}'.format(
-                    rule_status['key'], rule_status['status.start'])
 
                 # notify
                 if was_ok:
@@ -775,17 +775,21 @@ class Alerter:
                     self.do_alert(all_clear)
 
                     for alert in alerts:
-                        alert['status.start'] = rule_status['status.start']
-                        alert['status.id']    = rule_status['status.id']
-                        alert['status.end']   = rule_status['status.end']
+                        if 'status.start' in rule_status:
+                            alert['status.start'] = rule_status['status.start']
+                            alert['status.id']    = rule_status['status.id']
+
+                        if 'status.end' in rule_status:
+                            alert['status.end']   = rule_status['status.end']
 
                         if not rule.get('dry_run'):
                             self.write_status(alert)
                 else:
                     log.debug("iter alerts")
                     for alert in alerts:
-                        alert['status.start'] = rule_status['status.start']
-                        alert['status.id']    = rule_status['status.id']
+                        if 'status.start' in rule_status:
+                            alert['status.start'] = rule_status['status.start']
+                            alert['status.id']    = rule_status['status.id']
 
                         log.debug("alert=%r", alert)
                         if action:
