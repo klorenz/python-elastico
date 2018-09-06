@@ -14,6 +14,7 @@ setup(
         'elasticsearch',
         'PyYAML',
         'pyaml',
+        'requests',
         'argdeco',
         'markdown',
         'pytz',

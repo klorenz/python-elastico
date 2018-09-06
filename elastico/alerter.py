@@ -761,7 +761,10 @@ class Alerter:
                         if action:
                             action(alert)
                         else:
-                            if alert['status.current'] != 'ok':
+                            status_current = alert['status.current']
+                            status_realert = alert.get('status.realert')
+
+                            if status_current != 'ok' and not status_realert:
                                 self.do_alert(alert)
 
                             if not rule.get('dry_run'):
