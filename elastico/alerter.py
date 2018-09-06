@@ -419,7 +419,10 @@ class Alerter:
             last_rule = self.read_status(alert_data)
 
             if last_rule is not None:
-                status = last_rule['status']['current']
+                if isinstance(last_rule['status'], string):
+                    status = last_rule['status']
+                else:
+                    status = last_rule['status']['current']
             log.debug("current_status=%r", last_rule)
 
         if status is None:
@@ -693,11 +696,12 @@ class Alerter:
                         l = [l]
                     return l
 
-                self.assert_key(rule)
+                log.info("rule: %r", r)
+
+                self.assert_key(r)
 
                 # get rule status
-                rule_status = self.read_status(type='rule', key=rule.getval('key'),
-                    doc_type='elastico_rule_status')
+                rule_status = self.read_status(type='rule', key=r.getval('key'))
 
                 if rule_status is None:
                     rule_status = {}
@@ -765,13 +769,13 @@ class Alerter:
 
                     # send all clear to all notifications in rule_status
 
-                rule_status['key'] = rule.getval('key')
+                rule_status['key'] = r.getval('key')
                 rule_status['type'] = 'rule'
-                rule_status['name'] = rule.getval('name')
+                rule_status['name'] = r.getval('name')
 
-                if not rule.get('dry_run'):
-                    self.write_status(rule_status,
-                        doc_type='elastico_rule_status')
+                if not r.get('dry_run'):
+                    self.write_status(rule_status)
+                        #doc_type='elastico_rule_status')
 
                 # finally write status
 
