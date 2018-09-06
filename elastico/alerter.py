@@ -137,9 +137,9 @@ class Alerter:
             Alerter.STATUS[type][key] = rule
             log.debug("set status. type=%r key=%r", type, key)
 
-    def read_status(self, rule=None, key=None, type=None, doc_type='elastico_alert_status'):
+    def read_status(self, rule=None, key=None, type=None, filter=[]):
         storage_type = self.config.get('alerter.status_storage', 'memory')
-
+        doc_type = 'elastico_alert_status'
         if key is None:
             key  = rule.get('key')
         if type is None:
@@ -156,7 +156,7 @@ class Alerter:
                 'query': {'bool': {'must': [
                     {'term': {'key': key}},
                     {'term': {'type': type}}
-                ]}},
+                ]+filter}},
                 'sort': [{'@timestamp': 'desc'}],
                 'size': 1
             })
@@ -458,17 +458,21 @@ class Alerter:
                 # else it is assumed, that realert is a dictionary, which can
                 # be passed to timedelta
 
-                delta = timedelta(**realert)
-
                 # calculate wait time till next re-alert
                 now = self.now()
-                wait_time = delta - ( now - to_dt(last_rule['@timestamp']) )
+                try:
+                    delta = timedelta(seconds=int(last_rule['status.realert']))
+                except:
+                    delta = timedelta(**realert)
+
+                wait_time = delta - (now - to_dt(last_rule['@timestamp']))
 
                 log.debug("delta=%r wait_time=%r", delta, wait_time)
 
                 # if there is still wait time left,
                 if wait_time > timedelta(0):
-                    alert_data['status.realert'] = 'wait'
+                    #alert_data['status.realert'] = 'wait'
+                    alert_data['status.realert'] = wait_time.total_seconds()
                     log.warning("      trigger alert -> wait for realert (%s)", wait_time)
                     return alert_data
 ###>
