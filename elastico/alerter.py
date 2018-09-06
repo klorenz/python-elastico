@@ -218,7 +218,7 @@ class Alerter:
         #     remove_subject = True
         #     alert_data['message.subject'] = subject
         #
-        log.info("      notification subject %s", subject)
+        log.info("      notification subject=%r", subject)
         notifier.notify(subject=subject)
 
     def get_query(self, rule, name):
@@ -480,6 +480,7 @@ class Alerter:
                 else:
                     if last_rule['status.previous'] != 'ok':
                         alert_data['status.current'] = 'realert'
+                    log.warning("      trigger alert -> %s", alert_data['status.current'])
 
 ###>
 #            log.info("      trigger alert")
@@ -636,7 +637,7 @@ class Alerter:
             logger_name = r.getval('logger', 'elastico.alerter.%s' % _key)
             log = logging.getLogger(logger_name)
 
-            log.info("--- rule %s", _name)
+            log.info("rule=%r logger=%r", _name, logger_name)
 
             _alerts = get_alerts(r.get('alerts', []), context=r)
 
@@ -669,7 +670,7 @@ class Alerter:
                 _r_name = r.getval('name')
                 _key = self.assert_key(alert_data, _r_name)
 
-                log.info("----- alert %s-%s?", _type, _key)
+                log.info("alert? -- key=%r, type=%r", _key, _type)
 
                 visit_key = (_type, _key)
                 assert visit_key not in visited_keys, \
