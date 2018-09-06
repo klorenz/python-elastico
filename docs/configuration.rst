@@ -3,7 +3,7 @@ Configuration
 
 .. highlight:: yaml
 
-Typically you configure ElastiCo with a YAML configuration file.
+You configure ElastiCo with a YAML configuration file.
 
 You can do it in a single file, but it is recommended to use multiple
 files to keep the overview, especially if you create more complex
@@ -29,17 +29,23 @@ You can set up configurations like this:
            host_name: foo
 
 The ``host_name`` will be expanded, when using the ``name``.  For these
-patterns typical :py:class:`string.Formatter` is used with some extensions::
+patterns typical :py:class:`string.Formatter` is used with some extensions:
 
-==================  ===============  =========================================
- format_spec type    example          description
-==================  ===============  =========================================
-gb                  ``{num:.2gb}``   format a number like 5000000000 to 5.00
-mb                  ``{num:.2mb}``   format a number like 5000000 to 5.00
-json                ``{val:json}``   format whatever value is in num to json
-==================  ===============  =========================================
+====================  ===============  =========================================
+format_spec type      example          description
+====================  ===============  =========================================
+gb                    ``{num:.2gb}``   format a number like 5000000000 to 5.00
+mb                    ``{num:.2mb}``   format a number like 5000000 to 5.00
+json                  ``{val:json}``   format whatever value is in num to json
+====================  ===============  =========================================
 
 The formatter is very useful for composing notification messages.
+
+Please note, that although you usually format dictionaries, you can use also
+the attribute way of accessing the data, so following lines are equivalent::
+
+    {message[text]}
+    {message.text}
 
 Elasticsearch
 """""""""""""
@@ -160,6 +166,12 @@ Here a table of the possible message fields:
 :``message.text``:
    This should be configured in config file.  In the email it is interpreted
    as Markdown and rendered to HTML.
+
+   In message text you can make use of format_specs.  For convenience, if there
+   is a ``match_hit`` defined in your context, following lines are equivalent::
+
+       {match_hit._source.monitor.host}
+       {_.monitor.host}
 
 :``message.data``:
    If not specified, it is the (4 space indented) YAML representation of

@@ -631,8 +631,9 @@ class Alerter:
 
             _name = r.getval('name')
             _key = self.assert_key(r, _name)
-
-            if _key in self.config.get('alerter.disabled', []):
+            _disabled = self.config.get('alerter.disabled', [])
+            log.warning('key=%r disabled=%r', _key, _disabled)
+            if _key in _disabled:
                 log.warning('msg="rule %s disabled => skipping" key=%r', _name, _key)
                 continue
 
