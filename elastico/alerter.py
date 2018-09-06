@@ -478,7 +478,7 @@ class Alerter:
                     return alert_data
 
                 else:
-                    if last_rule['status.previous'] != 'ok':
+                    if alert_data['status.previous'] != 'ok':
                         alert_data['status.current'] = 'realert'
                     log.warning("      trigger alert -> %s", alert_data['status.current'])
 
