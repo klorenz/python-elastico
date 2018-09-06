@@ -460,7 +460,8 @@ class Alerter:
                 now = self.now()
                 try:
                     delta = timedelta(seconds=int(last_rule['status.realert']))
-                except:
+                except Exception as e:
+                    log.error("error", exc_info=1)
                     delta = timedelta(**realert)
 
                 time_passed = now - to_dt(last_rule['@timestamp'])
