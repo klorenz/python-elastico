@@ -208,8 +208,8 @@ class Alerter:
         subject = alert_data.getval('message.subject', '')
 
         if not subject:
-            type = alert_data['type']
-            name = alert_data['name']
+            type = alert_data.getval('type')
+            name = alert_data.getval('name')
             status  = alert_data['status.current'].upper()
             subject = '[elastico] {} - {} {}'.format(status, type, name)
 
@@ -771,6 +771,7 @@ class Alerter:
                     self.assert_key(all_clear)
                     all_clear.update(r.get('all_clear', {}))
                     log.info("all_clear=%r", all_clear)
+                    #log.info("all_clear=%r", all_clear)
                     self.do_alert(all_clear)
 
                     for alert in alerts:
