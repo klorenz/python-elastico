@@ -447,7 +447,7 @@ class Alerter:
 
             log.warning("need alert -- name=%r, status=%r", alert_data.getval('name'), status)
             # new status = alert
-            if status == 'alert' and last_rule:
+            if status != 'ok' and last_rule:
                 realert = alert_data.get('realert', {'minutes': 60})
 
                 if realert == 'never':
@@ -476,6 +476,10 @@ class Alerter:
                     alert_data['status.realert'] = wait_time.total_seconds()
                     log.warning("      trigger alert -> wait for realert (%s)", wait_time)
                     return alert_data
+
+                else:
+                    alert_data['status.current'] = 'realert'
+
 ###>
 #            log.info("      trigger alert")
 #
@@ -711,19 +715,27 @@ class Alerter:
                 if rule_status is None:
                     rule_status = {}
 
+                rule_status['key'] = r.getval('key')
+                rule_status['type'] = 'rule'
+                rule_status['name'] = r.getval('name')
+
                 alerts = collected_alerts
                 log.debug("alert count=%s", len(alerts))
 
                 #
                 was_ok = all([ a['status.previous'] == 'ok' for a in alerts ])
                 now_ok = all([ a['status.current'] == 'ok' for a in alerts ])
-                was_alert = lambda a: a['status.previous'] == 'alert'
+                was_alert = lambda a: a['status.previous'] != 'ok'
                 was_alert = [ x for x in filter(was_alert, alerts)]
                 log.debug("was_ok=%r now_ok=%r was_alert=%r", was_ok, now_ok, was_alert)
 
                 # update rule status
                 if was_ok and not now_ok:
-                    rule_status['start'] = dt_isoformat(now)
+                    rule_status['status.start'] = dt_isoformat(now)
+
+                # all related alerts and records will get this id
+                rule_status['status.id'] = '{}_{}'.format(
+                    rule_status['key'], rule_status['status.start'])
 
                 # notify
                 if was_ok:
@@ -745,7 +757,7 @@ class Alerter:
                 )))
 
                 if was_alert and now_ok:
-                    rule_status['end'] = dt_isoformat(now)
+                    rule_status['status.end'] = dt_isoformat(now)
 
                     all_clear = Config.object()
                     all_clear.update(r)
@@ -757,11 +769,18 @@ class Alerter:
                     self.do_alert(all_clear)
 
                     for alert in alerts:
+                        alert['status.start'] = rule_status['status.start']
+                        alert['status.id']    = rule_status['status.id']
+                        alert['status.end']   = rule_status['status.end']
+
                         if not rule.get('dry_run'):
                             self.write_status(alert)
                 else:
                     log.debug("iter alerts")
                     for alert in alerts:
+                        alert['status.start'] = rule_status['status.start']
+                        alert['status.id']    = rule_status['status.id']
+
                         log.debug("alert=%r", alert)
                         if action:
                             action(alert)
@@ -777,9 +796,6 @@ class Alerter:
 
                     # send all clear to all notifications in rule_status
 
-                rule_status['key'] = r.getval('key')
-                rule_status['type'] = 'rule'
-                rule_status['name'] = r.getval('name')
 
                 if not r.get('dry_run'):
                     self.write_status(rule_status)
