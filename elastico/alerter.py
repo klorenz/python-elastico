@@ -381,7 +381,7 @@ class Alerter:
 
         expect_code = alert_data.get('expect.code', 0)
 
-        log.info("command_succeeds -- "
+        log.info("msg='command_succeeds' "
             "cmd=%r result=%r expect=%r stdout=%r stderr=%r",
             cmd, result, expect_code, stripped(stdout), stripped(stderr))
 
@@ -395,7 +395,7 @@ class Alerter:
 
         expect_code = alert_data.get('expect.code', 0)
 
-        log.info("command_fails -- "
+        log.info("msg='command_fails' "
             "cmd=%r result=%r expect=%r stdout=%r stderr=%r",
             cmd, result, expect_code, stripped(stdout), stripped(stderr))
 
@@ -465,12 +465,12 @@ class Alerter:
 
                 time_passed = now - to_dt(last_rule['@timestamp'])
 
-                log.debug("delta=%r time_passed=%r", delta, time_passed)
+                log.info("delta=%r time_passed=%r", delta, time_passed)
 
                 # if there is still wait time left,
                 if delta > time_passed:
                     wait_time = delta - time_passed
-                    log.debug("wait_time=%r", wait_time)
+                    log.info("wait_time=%r", wait_time)
 
                     #alert_data['status.realert'] = 'wait'
                     alert_data['status.realert'] = wait_time.total_seconds()

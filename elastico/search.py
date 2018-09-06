@@ -1,4 +1,6 @@
 from .util import to_dt, dt_isoformat
+from .util import string
+from datetime import datetime, timedelta
 
 def search(es, query=None, index=None):
     return es.search(index=index or '*', body=build_query_body(query))
@@ -34,7 +36,7 @@ def build_search_body(config, name):
     if 'starttime' in config:
         starttime = to_dt(config['starttime'])
     else:
-        starttime = endtime - datetime.timedelta(minutes=timeframe)
+        starttime = endtime - timedelta(minutes=timeframe)
 
     starttime = dt_isoformat(starttime)
     endtime   = dt_isoformat(endtime)

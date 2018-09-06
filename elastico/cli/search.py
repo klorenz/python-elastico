@@ -1,4 +1,10 @@
 from .cli import command, arg
+from os.path import exists
+from ..search import build_search_body
+from ..connection import elasticsearch
+
+import logging
+log = logging.getLogger('elastico.cli.search')
 
 @command('search',
     arg('--format', '-F',
@@ -10,6 +16,7 @@ def search(config): #host, format, query):
     format = config.get('search.format')
     query  = config.get('search.query')
 
+    log.debug("format=%r query=%r", format, query)
     content = None
     if query == '-':
         content = sys.stdin.read()
@@ -29,7 +36,8 @@ def search(config): #host, format, query):
         else:
             config = yaml.loads(io.StringIO(content))
 
-    body = build_search_body(config, 'search')
+    body = build_search_body(config, 'query')
+    log.error("body=%r", body)
     es = elasticsearch(config)
     results = es.search(index=config.get('index', '*'), body=body)
 
