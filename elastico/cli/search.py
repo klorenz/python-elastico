@@ -11,6 +11,7 @@ log = logging.getLogger('elastico.cli.search')
         help="format string, which is applied to each match",
         default=None),
     arg('query', help="may be a query, a filename or '-' to read from stdin"),
+    arg('index', help="index to query", nargs="?", default='*')
 )
 def search(config): #host, format, query):
     format = config.get('search.format')
@@ -39,13 +40,13 @@ def search(config): #host, format, query):
     body = build_search_body(config, 'query')
     log.error("body=%r", body)
     es = elasticsearch(config)
-    results = es.search(index=config.get('index', '*'), body=body)
+    results = es.search(index=config.get('search.index', '*'), body=body)
 
-    if config['search.format']:
+    if config.get('search.format'):
         for hit in results['hits']['hits']:
             print(config['search.format'].format(hit))
 
-    elif config['search.template']:
+    elif config.get('search.template'):
         import chevron
         args = {}
         for k in ('template', 'partials_path', 'partials_ext',

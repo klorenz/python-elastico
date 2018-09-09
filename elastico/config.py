@@ -6,7 +6,7 @@ log = logging.getLogger('elastico.config')
 
 from .util import string, PY3
 
-from argdeco import ConfigDict
+from argdeco import ConfigDict, main
 class Undefined:
     pass
 
@@ -55,8 +55,6 @@ class Config(ConfigDict):
         self.config_file = file_name
         self.include_file(file_name)
         self.set_filename(file_name)
-
-        self.logging_setup()
 
     def logging_setup(self):
         logspec = self.get('logging', {})

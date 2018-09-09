@@ -19,31 +19,36 @@ def build_search_body(config, name):
 
     # lucene query string
     if isinstance(config[name], string):
-        filters = [{'query': {'query_string': {'query': config[name]}}}]
+        filters = [{'query_string': {'query': config[name]}}]
 
     # complete search body (including timerange, if any)
     if isinstance(config[name], dict):
         return config[name]
 
-    timestamp_field = config.get('timestamp_field', '@timestamp')
-    timeframe = config.get('timeframe_minutes', 60)
+    add_range = False
 
-    if 'endtime' in config:
-        endtime = to_dt(config['endtime'])
-    else:
-        endtime = datetime.utcnow() #.isoformat('T', 'seconds')+"Z"
+    query = {
+        'query': {'bool': {'must': filters}},
+    }
+    if add_range:
+        timestamp_field = config.get('timestamp_field', '@timestamp')
+        timeframe = config.get('timeframe_minutes', 60)
 
-    if 'starttime' in config:
-        starttime = to_dt(config['starttime'])
-    else:
-        starttime = endtime - timedelta(minutes=timeframe)
+        if 'endtime' in config:
+            endtime = to_dt(config['endtime'])
+        else:
+            endtime = datetime.utcnow() #.isoformat('T', 'seconds')+"Z"
 
-    starttime = dt_isoformat(starttime)
-    endtime   = dt_isoformat(endtime)
+        if 'starttime' in config:
+            starttime = to_dt(config['starttime'])
+        else:
+            starttime = endtime - timedelta(minutes=timeframe)
 
-    return {
-        'query': {'bool': {'must': [
-                {'range': {timestamp_field: {'gte': starttime, 'lte': endtime}}}
-            ] + filters,
-        'sort': {timestamp_field: 'desc'}
-    }}}
+        starttime = dt_isoformat(starttime)
+        endtime   = dt_isoformat(endtime)
+        filters += [
+            {'range': {timestamp_field: {'gte': starttime, 'lte': endtime}}}
+        ]
+        query['sort']: {timestamp_field: 'desc'}
+
+    return query

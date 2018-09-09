@@ -1,7 +1,8 @@
 from copy import deepcopy
 from textwrap import indent
 from .config import Config
-from .util import run_command, string, PY3
+from .util import run_command, string, PY3, get_netrc_login_data_from_value
+
 from pprint import pformat
 
 if PY3:

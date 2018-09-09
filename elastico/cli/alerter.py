@@ -75,6 +75,31 @@ def alerter_check(config):
 
     write_output(config, result)
 
+@alerter_command('show',
+    arg('item', choices=('rules', 'alerts'), help="choose what to display"),
+    opt('--details', '--all', '-a', help="display rule details")
+)
+def alerter_show(config):
+    alerter = Alerter(elasticsearch(config), config)
+    if config['alerter.show.item'] == 'rules':
+        data = dict((r['name'], r)
+            for r in [rule.format() for rule in alerter.iterate_rules()])
+
+        if config['alerter.show.details']:
+            pyaml.p(data)
+        else:
+            pyaml.p(sorted([k for k in data.keys()]))
+    elif config['alerter.show.item'] == 'alerts':
+        data = dict(('{}.{}'.format(*alerter.get_alert_key_type(alert)), alert)
+            for rule,alerts in alerter.iterate_alerts()
+            for alert in alerts
+        )
+        if config['alerter.show.details']:
+            pyaml.p(data)
+        else:
+            pyaml.p(sorted([k for k in data.keys()]))
+
+
 @alerter_command("run")
 def alerter_run(config):
     """run alerter"""

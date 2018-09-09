@@ -44,6 +44,7 @@ class Server:
                     )
 
             self.config.refresh(at=_at)
+            self.config.logging_setup()
 
             if count is None:
                 count = int(self.get_value('serve.count', -1))

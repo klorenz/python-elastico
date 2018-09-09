@@ -34,6 +34,17 @@ Contents:
 
     - add mermaid diagrams to documentation, use tox env to generate doc + dep sphinxcontrib-mermaid
 
+.. todo:: features
+
+    - make a rule composer, and a alert composer, to generate  a list of all
+      alert, which is sortable
+    - match:
+        if: key_of_rule.fatal
+        if-not: key_of_rule.warning
+        match: ...
+    - query the alert status before notification and make it usable in notification
+      "first occurance: {status.start}"
+
 
 Indices and tables
 ==================
