@@ -357,7 +357,7 @@ def test_alerter_alert_elasticsearch(monkeypatch):
                             fatal:
                                 match: y
             """), es_client=es)
-            alerter.config.update(kwargs)
+            alerter.config['arguments'] = kwargs
 
             def mock_matching_succeeds(rule):
                 if rule['match'] == 'x':
@@ -376,7 +376,8 @@ def test_alerter_alert_elasticsearch(monkeypatch):
             return alerter
 
         at = to_dt("2018-05-05 10:02:00")
-        get_alerter(at=at).check_alerts()
+        alerter = get_alerter(at=at)
+        alerter.check_alerts()
 
         status = {}
         status['warning'] = alerter.read_status(key='test', type='warning')
@@ -389,7 +390,7 @@ def test_alerter_alert_elasticsearch(monkeypatch):
                 '@timestamp': at_s,
                 'at': at_s,
                 'name': 'test',
-                'status': {'current': 'ok', 'previous': 'ok'},
+                'status': {'current': 'ok', 'next_check': 0, 'previous': 'ok'},
                 'alert_trigger': False,
                 'key': 'test',
                 'type': 'fatal',
@@ -400,7 +401,7 @@ def test_alerter_alert_elasticsearch(monkeypatch):
                 '@timestamp': at_s,
                 'at': at_s,
                 'name': 'test',
-                'status': {'current': 'alert', 'previous': 'ok'},
+                'status': {'current': 'alert', 'next_check': 0, 'previous': 'ok'},
                 'match_hit': {'foo': 'bar'},
                 'alert_trigger': True,
                 'key': 'test',
@@ -429,10 +430,10 @@ def test_alerter_alert_filesystem(monkeypatch, tmpdir):
                     rules:
                         - name: test
                           alerts:
-                          - type: warning
-                            match: x
-                          - type: fatal
-                            match: y
+                            warning:
+                                match: x
+                            fatal
+                                match: y
             """ % tmpdir.strpath), es_client=es)
 
             def mock_matching_succeeds(rule):
@@ -526,19 +527,17 @@ def test_alerter_match():
                       timeframe:
                         minutes: 5
                       alerts:
-                        - type: fatal
+                        fatal:
                           match: "value:[0 TO 10]"
                           index: test-alerter-match
-                        - type: warning
+                        warning:
                           match: "value:[10 TO 13]"
                           index: test-alerter-match
         """)
+        _config['at'] = "2018-05-05 10:02:00Z"
 
         alerter = Alerter(config =_config, es_client=es)
-
-        # no matches in timeframe after
-        at = to_dt("2018-05-05 10:02:00")
-        alerter.process_rules(at=at)
+        alerter.check_alerts()
 
         at_s = dt_isoformat(at)
 
@@ -602,10 +601,11 @@ def test_alerter_match():
                 }
             }
         }
+        config['at'] = "2018-05-05 10:07:00Z"
 
         alerter = Alerter(config =_config, es_client=es)
         at = to_dt("2018-05-05 10:07:00")
-        alerter.process_rules(at=at)
+        alerter.check_alerts()
         at_s = dt_isoformat(at)
 
         start_s = at_s
@@ -678,10 +678,13 @@ def test_alerter_match():
             }
         }
 
+        config['at'] = "2018-05-05 10:20:00Z"
+
         alerter = Alerter(config =_config, es_client=es)
         at = to_dt("2018-05-05 10:20:00")
-        alerter.process_rules(at=at)
+        alerter.check_alerts()
         at_s = dt_isoformat(at)
+
 
         print("=== check 3 ===")
         pprint(Alerter.STATUS)
@@ -749,13 +752,13 @@ def test_alerter_email(monkeypatch):
             rules:
                 - name: test
                   alerts:
-                  - type: hummhomm
-                    match: x
-                    message:
-                        text: >
-                            humm homm
-                  - type: fatal
-                    match: y
+                    hummhomm:
+                        match: x
+                        message:
+                            text: >
+                                humm homm
+                    fatal:
+                        match: y
     """))
 
     def mock_matching_succeeds(rule):
