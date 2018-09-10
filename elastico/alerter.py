@@ -672,6 +672,11 @@ class Alerter:
             done_alerts = list(set(chain(done_alerts, alerts_list)))
             rule_status['alerts'] = done_alerts
 
+            # get severity of the alert
+            S = self.config['alerter'].get('severity', {})
+            severity = max([ a['status.current'] != 'ok' and S.get(a['type'], 1) or S.get('ok', 0) for a in alerts ])
+            rule_status['status.severity'] = severity
+
             if was_alert and now_ok:
                 # have to send all-clear for this rule
                 rule_status['status.end'] = dt_isoformat(now)
@@ -1182,10 +1187,6 @@ class Alerter:
                 was_alert = [ x for x in filter(was_alert, alerts)]
                 log.debug("was_ok=%r now_ok=%r was_alert=%r", was_ok, now_ok, was_alert)
 
-                # get severity of the alert
-                S = self.config['alerter'].get('severity', {})
-                severity = max([ a['status.current'] != 'ok' and S.get(a['type'], 1) or S.get('ok', 0) for a in alerts ])
-                rule_status['status.severity'] = severity
 
                 #now_ok = max([ a.get('severity, )['status.current'] == 'ok' for a in alerts ])
                 # update rule status

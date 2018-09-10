@@ -289,6 +289,9 @@ def test_alerter_alert(monkeypatch):
     def get_alerter(**kwargs):
         alerter = Alerter(config=make_config("""
             alerter:
+                severity:
+                    warning: 10
+                    fatal: 20
                 rules:
                     - name: test
                       alerts:
@@ -316,6 +319,7 @@ def test_alerter_alert(monkeypatch):
                     'status': {'current': 'ok',
                             'id': 'test_2018-05-05T10:07:00Z',
                             'start': '2018-05-05T10:07:00Z',
+                            'severity': 10,
 
                                'next_check': 0,
                                'previous': 'ok'},
@@ -327,6 +331,7 @@ def test_alerter_alert(monkeypatch):
                    'alerts': [],
                    'status': {
                         'id': 'test_2018-05-05T10:07:00Z',
+                            'severity': 10,
                         'start': '2018-05-05T10:07:00Z',
                    },
                    'type': 'rule'}},
@@ -339,6 +344,7 @@ def test_alerter_alert(monkeypatch):
                       'name': 'test',
                       'status': {'current': 'alert',
                             'id': 'test_2018-05-05T10:07:00Z',
+                            'severity': 10,
                             'start': '2018-05-05T10:07:00Z',
                                  'next_check': 0,
                                  'previous': 'ok'},
@@ -403,6 +409,7 @@ def test_alerter_alert_elasticsearch(monkeypatch):
                     'next_check': 0,
                     'id': 'test_2018-05-05T10:02:00Z',
                     'start': '2018-05-05T10:02:00Z',
+                    'severity': 1,
                     'previous': 'ok'
                     },
                 'alert_trigger': False,
@@ -419,6 +426,7 @@ def test_alerter_alert_elasticsearch(monkeypatch):
                     'current': 'alert',
                     'next_check': 0,
                     'previous': 'ok',
+                    'severity': 1,
                     'id': 'test_2018-05-05T10:02:00Z',
                     'start': '2018-05-05T10:02:00Z',
                     },
@@ -491,6 +499,7 @@ def test_alerter_alert_filesystem(monkeypatch, tmpdir):
                     'current': 'ok',
                     'id': 'test_2018-05-05T10:02:00Z',
                     'start': '2018-05-05T10:02:00Z',
+                    'severity': 1,
                     'next_check': 0,
                     'previous': 'ok'},
                 'alert_trigger': False,
@@ -505,6 +514,7 @@ def test_alerter_alert_filesystem(monkeypatch, tmpdir):
                 'name': 'test',
                 'status': {
                     'id': 'test_2018-05-05T10:02:00Z',
+                    'severity': 1,
                     'start': '2018-05-05T10:02:00Z',
                     'current': 'alert', 'next_check': 0, 'previous': 'ok'},
                 'match_hit': {'foo': 'bar'},
@@ -550,6 +560,9 @@ def test_alerter_match():
 
         _config = Config.object("""
             alerter:
+                severity:
+                    fatal: 2
+                    warning: 1
                 rules:
                     - name: value-check
                       timeframe:
@@ -603,6 +616,7 @@ def test_alerter_match():
                     'match_hits_total': 0,
                     'status': {
                         'current': 'ok',
+                        'severity': 0,
                         'next_check': 0, 'previous': 'ok'},
                     'type': 'fatal'
                 }
@@ -611,6 +625,7 @@ def test_alerter_match():
                           'alerts': [],
                           'key': 'value_check',
                           'name': 'value-check',
+                          'status': {'severity': 0},
                           'notify': [],
                           'type': 'rule'}},
             'warning': {
@@ -627,6 +642,7 @@ def test_alerter_match():
                     'match_hits_total': 0,
                     'status': {
                         'current': 'ok',
+                          'severity': 0,
                         'next_check': 0, 'previous': 'ok'},
                     'type': 'warning'
                 }
@@ -671,6 +687,7 @@ def test_alerter_match():
                         'current': 'alert',
                         'id': 'value_check_2018-05-05T10:07:00Z',
                         'next_check': 0,
+                        'severity': 2,
                         'previous': 'ok',
                         'start': '2018-05-05T10:07:00Z',
                         },
@@ -682,6 +699,7 @@ def test_alerter_match():
                         'status' : {
                             'id': 'value_check_2018-05-05T10:07:00Z',
                             'start': '2018-05-05T10:07:00Z',
+                        'severity': 2,
                         },
                           'key': 'value_check',
                           'name': 'value-check',
@@ -714,6 +732,7 @@ def test_alerter_match():
                         'current': 'alert',
                         'next_check': 0,
                         'previous': 'ok',
+                        'severity': 2,
                         'id': 'value_check_2018-05-05T10:07:00Z',
                         'start': '2018-05-05T10:07:00Z',
                         },
@@ -749,6 +768,7 @@ def test_alerter_match():
                         'current': 'ok',
                         'previous': 'alert',
                         'end': '2018-05-05T10:20:00Z',
+                        'severity': 0,
                         'id': 'value_check_2018-05-05T10:07:00Z',
                         'next_check': 0,
                         'start': '2018-05-05T10:07:00Z',
@@ -759,6 +779,7 @@ def test_alerter_match():
             'rule': {'value_check': {'@timestamp': at_s,
                     'status': {
                         'end': '2018-05-05T10:20:00Z',
+                        'severity': 0,
                         'id': 'value_check_2018-05-05T10:07:00Z',
                         'start': '2018-05-05T10:07:00Z',
                     },
@@ -782,6 +803,7 @@ def test_alerter_match():
                     'status': {
                         'current': 'ok',
                         'previous': 'alert',
+                        'severity': 0,
                         'end': '2018-05-05T10:20:00Z',
                         'id': 'value_check_2018-05-05T10:07:00Z',
                         'next_check': 0,
@@ -847,7 +869,7 @@ def test_alerter_email(monkeypatch):
 
     monkeypatch.setattr(util, 'sendmail', mock_sendmail)
 
-    alerter.config['at'] = dt_isoformat(to_dt("2018-05-05 10:07:00Z"))
+    alerter.config['arguments'] = dict(at= dt_isoformat(to_dt("2018-05-05 10:07:00Z")));
     alerter.check_alerts()
 
     message = mock_args['sendmail']['message']
@@ -887,7 +909,7 @@ def test_alerter_email(monkeypatch):
             ---------
 
                 alert_trigger: true
-                at: 2018-05-05 10:07:00+00:00
+                at: 2018-05-05T10:07:00Z
                 key: test
                 match: x
                 match_hit:
@@ -904,7 +926,11 @@ def test_alerter_email(monkeypatch):
                     transport: email
                 status:
                   current: alert
+                  id: test_2018-05-05T10:07:00Z
+                  next_check: 0
                   previous: ok
+                  severity: 1
+                  start: 2018-05-05T10:07:00Z
                 type: hummhomm
 
 
@@ -916,7 +942,7 @@ def test_alerter_email(monkeypatch):
             <p>humm homm</p>
             <hr />
             <pre><code>alert_trigger: true
-            at: 2018-05-05 10:07:00+00:00
+            at: 2018-05-05T10:07:00Z
             key: test
             match: x
             match_hit:
@@ -933,7 +959,11 @@ def test_alerter_email(monkeypatch):
                 transport: email
             status:
               current: alert
+              id: test_2018-05-05T10:07:00Z
+              next_check: 0
               previous: ok
+              severity: 1
+              start: 2018-05-05T10:07:00Z
             type: hummhomm
             </code></pre>
             --===============11111==--
