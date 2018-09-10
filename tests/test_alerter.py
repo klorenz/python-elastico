@@ -1011,7 +1011,8 @@ def test_alerter_command():
     """))
 
     at = to_dt("2018-05-05 10:07:00")
-    alerter.process_rules(at=at)
+    alerter.config['arguments'] = dict(at=dt_isoformat(at))
+    alerter.check_alerts()
 
     pprint(Alerter.STATUS, indent=2)
     assert Alerter.STATUS == {
@@ -1023,7 +1024,13 @@ def test_alerter_command():
                            'name': 'test',
                            'notify': ['sound'],
                            'result': {'exit_code': 0},
-                           'status': {'current': 'ok', 'previous': 'ok'},
+                           'status': {
+                            'current': 'ok',
+                                            'id': 'test_2018-05-05T10:07:00Z',
+                                    'next_check': 0,
+                                    'severity': 1,
+                                    'start': '2018-05-05T10:07:00Z',
+                                'previous': 'ok'},
                            'type': 'hummhomm1'}},
   'hummhomm2': { 'test': { '@timestamp': '2018-05-05T10:07:00Z',
                            'alert_trigger': False,
@@ -1033,7 +1040,12 @@ def test_alerter_command():
                            'name': 'test',
                            'notify': ['sound'],
                            'result': {'exit_code': 1},
-                           'status': {'current': 'ok', 'previous': 'ok'},
+                           'status': {'current': 'ok',
+                                            'id': 'test_2018-05-05T10:07:00Z',
+                                    'next_check': 0,
+                                    'severity': 1,
+                                    'start': '2018-05-05T10:07:00Z',
+                           'previous': 'ok'},
                            'type': 'hummhomm2'}},
   'hummhomm3': { 'test': { '@timestamp': '2018-05-05T10:07:00Z',
                            'alert_trigger': True,
@@ -1057,14 +1069,23 @@ def test_alerter_command():
                                                          'transport': 'command'}},
                            'notify': ['sound'],
  'result': {'exit_code': 1},
-                           'status': {'current': 'alert', 'previous': 'ok'},
+                           'status': {'current': 'alert',
+                                            'id': 'test_2018-05-05T10:07:00Z',
+                                    'next_check': 0,
+                                    'severity': 1,
+                                    'start': '2018-05-05T10:07:00Z',
+                           'previous': 'ok'},
                            'type': 'hummhomm3'}},
   'rule': { 'test': { '@timestamp': '2018-05-05T10:07:00Z',
                       'alerts': [],
                       'key': 'test',
                       'name': 'test',
                       'notify': [],
-                      'start': '2018-05-05T10:07:00Z',
+                      'status': {
+                        'id': 'test_2018-05-05T10:07:00Z',
+                        'severity': 1,
+                        'start': '2018-05-05T10:07:00Z',
+                      },
                       'type': 'rule'}}}
 
 
