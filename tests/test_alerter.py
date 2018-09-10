@@ -314,6 +314,9 @@ def test_alerter_alert(monkeypatch):
                     'match_hits_total': 0,
                     'name': 'test',
                     'status': {'current': 'ok',
+                            'id': 'test_2018-05-05T10:07:00Z',
+                            'start': '2018-05-05T10:07:00Z',
+
                                'next_check': 0,
                                'previous': 'ok'},
                     'type': 'fatal'}},
@@ -321,8 +324,11 @@ def test_alerter_alert(monkeypatch):
                    'key': 'test',
                    'name': 'test',
                    'notify': [],
-                   'status.id': 'test_2018-05-05T10:07:00Z',
-                   'status.start': '2018-05-05T10:07:00Z',
+                   'alerts': [],
+                   'status': {
+                        'id': 'test_2018-05-05T10:07:00Z',
+                        'start': '2018-05-05T10:07:00Z',
+                   },
                    'type': 'rule'}},
  'warning': {'test': {'@timestamp': '2018-05-05T10:07:00Z',
                       'alert_trigger': True,
@@ -332,6 +338,8 @@ def test_alerter_alert(monkeypatch):
                       'match_hits_total': 4,
                       'name': 'test',
                       'status': {'current': 'alert',
+                            'id': 'test_2018-05-05T10:07:00Z',
+                            'start': '2018-05-05T10:07:00Z',
                                  'next_check': 0,
                                  'previous': 'ok'},
                       'type': 'warning'}}}
@@ -390,7 +398,13 @@ def test_alerter_alert_elasticsearch(monkeypatch):
                 '@timestamp': at_s,
                 'at': at_s,
                 'name': 'test',
-                'status': {'current': 'ok', 'next_check': 0, 'previous': 'ok'},
+                'status': {
+                    'current': 'ok',
+                    'next_check': 0,
+                    'id': 'test_2018-05-05T10:02:00Z',
+                    'start': '2018-05-05T10:02:00Z',
+                    'previous': 'ok'
+                    },
                 'alert_trigger': False,
                 'key': 'test',
                 'type': 'fatal',
@@ -401,7 +415,13 @@ def test_alerter_alert_elasticsearch(monkeypatch):
                 '@timestamp': at_s,
                 'at': at_s,
                 'name': 'test',
-                'status': {'current': 'alert', 'next_check': 0, 'previous': 'ok'},
+                'status': {
+                    'current': 'alert',
+                    'next_check': 0,
+                    'previous': 'ok',
+                    'id': 'test_2018-05-05T10:02:00Z',
+                    'start': '2018-05-05T10:02:00Z',
+                    },
                 'match_hit': {'foo': 'bar'},
                 'alert_trigger': True,
                 'key': 'test',
@@ -432,7 +452,7 @@ def test_alerter_alert_filesystem(monkeypatch, tmpdir):
                           alerts:
                             warning:
                                 match: x
-                            fatal
+                            fatal:
                                 match: y
             """ % tmpdir.strpath), es_client=es)
 
@@ -447,9 +467,9 @@ def test_alerter_alert_filesystem(monkeypatch, tmpdir):
                     rule['alert_trigger'] = False
                     return False
                 return True
+            alerter.config['arguments'] = kwargs
 
             monkeypatch.setattr(alerter, 'do_match', mock_matching_succeeds)
-            alerter.config.update(kwargs)
             return alerter
 
         at = to_dt("2018-05-05 10:02:00")
@@ -467,7 +487,12 @@ def test_alerter_alert_filesystem(monkeypatch, tmpdir):
                 '@timestamp': at_s,
                 'at': at_s,
                 'name': 'test',
-                'status': {'current': 'ok', 'previous': 'ok'},
+                'status': {
+                    'current': 'ok',
+                    'id': 'test_2018-05-05T10:02:00Z',
+                    'start': '2018-05-05T10:02:00Z',
+                    'next_check': 0,
+                    'previous': 'ok'},
                 'alert_trigger': False,
                 'key': 'test',
                 'type': 'fatal',
@@ -478,7 +503,10 @@ def test_alerter_alert_filesystem(monkeypatch, tmpdir):
                 '@timestamp': at_s,
                 'at': at_s,
                 'name': 'test',
-                'status': {'current': 'alert', 'previous': 'ok'},
+                'status': {
+                    'id': 'test_2018-05-05T10:02:00Z',
+                    'start': '2018-05-05T10:02:00Z',
+                    'current': 'alert', 'next_check': 0, 'previous': 'ok'},
                 'match_hit': {'foo': 'bar'},
                 'alert_trigger': True,
                 'key': 'test',
@@ -534,12 +562,11 @@ def test_alerter_match():
                           match: "value:[10 TO 13]"
                           index: test-alerter-match
         """)
-        _config['at'] = "2018-05-05 10:02:00Z"
+        at_s = "2018-05-05T10:02:00Z"
+        _config['arguments'] = dict(at = at_s)
 
         alerter = Alerter(config =_config, es_client=es)
         alerter.check_alerts()
-
-        at_s = dt_isoformat(at)
 
         def _match_query(q, f, t):
             return {
@@ -561,7 +588,7 @@ def test_alerter_match():
         print("=== check 1 ===")
         pprint(Alerter.STATUS)
 
-        assert Alerter.STATUS == {
+        assert (1, Alerter.STATUS) == (1, {
             'fatal': {
                 'value_check': {
                     'name': 'value-check',
@@ -574,7 +601,9 @@ def test_alerter_match():
                     'match_query': _match_query('value:[0 TO 10]', '09:57', '10:02'),
                     'alert_trigger': False,
                     'match_hits_total': 0,
-                    'status': {'current': 'ok', 'previous': 'ok'},
+                    'status': {
+                        'current': 'ok',
+                        'next_check': 0, 'previous': 'ok'},
                     'type': 'fatal'
                 }
             },
@@ -596,24 +625,24 @@ def test_alerter_match():
                     'match_query': _match_query('value:[10 TO 13]', '09:57', '10:02'),
                     'alert_trigger': False,
                     'match_hits_total': 0,
-                    'status': {'current': 'ok', 'previous': 'ok'},
+                    'status': {
+                        'current': 'ok',
+                        'next_check': 0, 'previous': 'ok'},
                     'type': 'warning'
                 }
             }
-        }
-        config['at'] = "2018-05-05 10:07:00Z"
-
+        })
         alerter = Alerter(config =_config, es_client=es)
-        at = to_dt("2018-05-05 10:07:00")
+        at_s = "2018-05-05T10:07:00Z"
+        alerter.config['arguments'] = dict(at=at_s)
         alerter.check_alerts()
-        at_s = dt_isoformat(at)
 
         start_s = at_s
 
         print("=== check 2 ===")
         pprint(Alerter.STATUS)
 
-        assert Alerter.STATUS == {
+        assert (2, Alerter.STATUS) == (2, {
             'fatal': {
                 'value_check': {
                     'name': 'value-check',
@@ -638,13 +667,22 @@ def test_alerter_match():
 
                      'alert_trigger': True,
                      'match_hits_total': 2,
-                     'status': {'current': 'alert', 'previous': 'ok'},
+                     'status': {
+                        'current': 'alert',
+                        'id': 'value_check_2018-05-05T10:07:00Z',
+                        'next_check': 0,
+                        'previous': 'ok',
+                        'start': '2018-05-05T10:07:00Z',
+                        },
                      'type': 'fatal'
                 }
             },
             'rule': {'value_check': {'@timestamp': at_s,
-                        'start': start_s,
                           'alerts': [],
+                        'status' : {
+                            'id': 'value_check_2018-05-05T10:07:00Z',
+                            'start': '2018-05-05T10:07:00Z',
+                        },
                           'key': 'value_check',
                           'name': 'value-check',
                           'notify': [],
@@ -672,24 +710,29 @@ def test_alerter_match():
                     },
                     'alert_trigger': True,
                     'match_hits_total': 2,
-                    'status': {'current': 'alert', 'previous': 'ok'},
+                    'status': {
+                        'current': 'alert',
+                        'next_check': 0,
+                        'previous': 'ok',
+                        'id': 'value_check_2018-05-05T10:07:00Z',
+                        'start': '2018-05-05T10:07:00Z',
+                        },
                     'type': 'warning'
                 }
             }
-        }
-
-        config['at'] = "2018-05-05 10:20:00Z"
+        })
 
         alerter = Alerter(config =_config, es_client=es)
-        at = to_dt("2018-05-05 10:20:00")
+        at_s = "2018-05-05T10:20:00Z"
+        alerter.config['arguments']['at'] = at_s
+
         alerter.check_alerts()
-        at_s = dt_isoformat(at)
 
 
         print("=== check 3 ===")
         pprint(Alerter.STATUS)
 
-        assert Alerter.STATUS == {
+        assert (3, Alerter.STATUS) == (3, {
             'fatal': {
                 'value_check': {
                     'name': 'value-check',
@@ -702,14 +745,24 @@ def test_alerter_match():
                     'match_query': _match_query('value:[0 TO 10]', '10:15', '10:20'),
                      'alert_trigger': False,
                      'match_hits_total': 0,
-                     'status': {'current': 'ok', 'previous': 'alert'},
+                     'status': {
+                        'current': 'ok',
+                        'previous': 'alert',
+                        'end': '2018-05-05T10:20:00Z',
+                        'id': 'value_check_2018-05-05T10:07:00Z',
+                        'next_check': 0,
+                        'start': '2018-05-05T10:07:00Z',
+                    },
                      'type': 'fatal'
                 }
             },
             'rule': {'value_check': {'@timestamp': at_s,
-                        'start': start_s,
-                        'end': at_s,
-                          'alerts': list(set(['fatal', 'warning'])),
+                    'status': {
+                        'end': '2018-05-05T10:20:00Z',
+                        'id': 'value_check_2018-05-05T10:07:00Z',
+                        'start': '2018-05-05T10:07:00Z',
+                    },
+                    'alerts': list(set(['fatal', 'warning'])),
                           'key': 'value_check',
                           'name': 'value-check',
                           'notify': [],
@@ -726,11 +779,18 @@ def test_alerter_match():
                     'match_query': _match_query('value:[10 TO 13]', '10:15', '10:20'),
                     'alert_trigger': False,
                     'match_hits_total': 0,
-                    'status': {'current': 'ok', 'previous': 'alert'},
+                    'status': {
+                        'current': 'ok',
+                        'previous': 'alert',
+                        'end': '2018-05-05T10:20:00Z',
+                        'id': 'value_check_2018-05-05T10:07:00Z',
+                        'next_check': 0,
+                        'start': '2018-05-05T10:07:00Z',
+                    },
                     'type': 'warning'
                 }
             }
-        }
+        })
 
 
     finally:
@@ -787,8 +847,8 @@ def test_alerter_email(monkeypatch):
 
     monkeypatch.setattr(util, 'sendmail', mock_sendmail)
 
-    at = to_dt("2018-05-05 10:07:00")
-    alerter.process_rules(at=at)
+    alerter.config['at'] = dt_isoformat(to_dt("2018-05-05 10:07:00Z"))
+    alerter.check_alerts()
 
     message = mock_args['sendmail']['message']
     del mock_args['sendmail']['message']

@@ -584,6 +584,7 @@ class Alerter:
         log.debug("alert_init_status: %s", alert.__class__.__name__)
         alert_status = self.read_status(alert)
 
+        now = self.now()
         every = timedelta(**alert.get('every', {'minutes': 1}))
 
         # initialize new status
@@ -613,7 +614,7 @@ class Alerter:
         rule_status['type'] = 'rule'
         rule_status['name'] = rule.getval('name')
 
-        return rule_status
+        return Config(rule_status)
 
 
     def check_alerts(self):
@@ -644,6 +645,14 @@ class Alerter:
                 rule_status['status.id'] = '{}_{}'.format(
                     rule_status['key'], rule_status['status.start'])
 
+            # helper function to always return a list (if string or list)
+            def _get_list(D,n):
+                l = D.get(n, [])
+                if not isinstance(l, list):
+                    l = [l]
+                return l
+
+
             # update list of notifications done on this rule
             if was_ok:
                 done_notify = []
@@ -661,11 +670,12 @@ class Alerter:
                 done_alerts = _get_list(rule_status, 'alerts')
             alerts_list = [ a['type'] for a in was_alert ]
             done_alerts = list(set(chain(done_alerts, alerts_list)))
+            rule_status['alerts'] = done_alerts
 
             if was_alert and now_ok:
                 # have to send all-clear for this rule
                 rule_status['status.end'] = dt_isoformat(now)
-                all_clear = self.init_all_clear(rule)
+                all_clear = self.init_all_clear(rule, rule_status['notify'])
 
             for alert in alerts:
                 if 'status' not in alert:
@@ -701,7 +711,8 @@ class Alerter:
         visited_keys = set()
         unresolved_deps = {}
 
-        for alert in self.iterate_alerts():
+        for rule, alerts in self.iterate_alerts():
+
             every = timedelta(**alert.get('every', {'minutes': 1}))
             alert_status = self.read_status(alert)
             last_check = to_dt(alert_status['at'])
@@ -1002,12 +1013,15 @@ class Alerter:
         visit_key = self.get_alert_type_key(alert_data)
 
         assert visit_key not in visited_keys, \
-            "key %s already used in rule %s" % (_key, _r_name)
+            "key %(key)r already used in rule %(name)r" % alert_data
 
         assert 'match' in alert_data or 'no_match' in alert_data \
             or 'command_succeeds' in alert_data \
             or 'command_fails' in alert_data, \
-            "rule %s does not have a check defined" % _r_name
+            "rule %(name)r does not have a check defined" % alert_data
+
+        # assert 'severity' in alert_data, \
+        #     "alert %(type)r in rule %(name)r has no severity defined" % alert_data
 
         log.debug("alert_data: %s", alert_data)
         return alert_data
@@ -1168,6 +1182,12 @@ class Alerter:
                 was_alert = [ x for x in filter(was_alert, alerts)]
                 log.debug("was_ok=%r now_ok=%r was_alert=%r", was_ok, now_ok, was_alert)
 
+                # get severity of the alert
+                S = self.config['alerter'].get('severity', {})
+                severity = max([ a['status.current'] != 'ok' and S.get(a['type'], 1) or S.get('ok', 0) for a in alerts ])
+                rule_status['status.severity'] = severity
+
+                #now_ok = max([ a.get('severity, )['status.current'] == 'ok' for a in alerts ])
                 # update rule status
                 if was_ok and not now_ok:
                     rule_status['status.start'] = dt_isoformat(now)
@@ -1270,12 +1290,12 @@ class Alerter:
             if not _alerts and action:
                 action(rule)
 
-    def init_all_clear(self, rule):
+    def init_all_clear(self, rule, notify):
         all_clear = Config.object()
-        all_clear.update(r)
+        all_clear.update(rule)
         all_clear['type'] = 'all-clear'
         all_clear['status.current'] = 'ok'
-        all_clear['notify'] = rule_status['notify']
+        all_clear['notify'] = notify
         self.assert_key(all_clear)
         all_clear.update(rule.get('all_clear', {}))
         log.info("all_clear=%r", all_clear)
