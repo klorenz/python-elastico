@@ -674,7 +674,7 @@ class Alerter:
 
             # get severity of the alert
             S = self.config['alerter'].get('severity', {})
-            severity = max([ a['status.current'] != 'ok' and S.get(a['type'], 1) or S.get('ok', 0) for a in alerts ])
+            severity = max([ a['status.current'] != 'ok' and S.get(a['type'], 1) or S.get('ok', 0) for a in alerts ]    )
             rule_status['status.severity'] = severity
 
             if was_alert and now_ok:

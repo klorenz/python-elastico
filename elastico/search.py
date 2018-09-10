@@ -49,6 +49,6 @@ def build_search_body(config, name):
         filters += [
             {'range': {timestamp_field: {'gte': starttime, 'lte': endtime}}}
         ]
-        query['sort']: {timestamp_field: 'desc'}
+        query['sort'] = {timestamp_field: 'desc'}
 
     return query
