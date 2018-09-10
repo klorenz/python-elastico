@@ -53,6 +53,7 @@ def alerter_expand_rules(config):
     arg('alert', nargs="*", default=[]),
     )
 def alerter_check(config):
+    raise NotImplemented("'check' command needs refactoring")
 
     config['arguments.dry_run'] = True
 
@@ -104,7 +105,7 @@ def alerter_show(config):
 def alerter_run(config):
     """run alerter"""
     alerter = Alerter(elasticsearch(config), config)
-    alerter.process_rules()
+    alerter.check_alerts()
 
 @alerter_command("serve",
     arg('--sleep-seconds', '-s', type=float, default=60, config="serve.sleep_seconds"),
@@ -115,7 +116,7 @@ def alerter_serve(config):
 
     def _run():
         alerter = Alerter(elasticsearch(config), config)
-        alerter.process_rules()
+        alerter.check_alerts()
 
     server = Server(config, run=_run)
     server.run()
