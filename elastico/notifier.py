@@ -249,8 +249,13 @@ class Notifier(BaseNotifier):
                 log.debug("data: %r", data)
 
                 if subject is None:
-                    subject = data.getval('message.subject',
-                        '[elastico] notification')
+                    try:
+                        subject = data.getval('message.subject',
+                            '[elastico] notification')
+                    except:
+                        subject = '[elastico] notification'
+
+
 
                 message = {
                     'text': text,

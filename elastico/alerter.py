@@ -681,6 +681,8 @@ class Alerter:
                 # have to send all-clear for this rule
                 rule_status['status.end'] = dt_isoformat(now)
                 all_clear = self.init_all_clear(rule, rule_status['notify'])
+                self.do_alert(all_clear)
+                rule_status['all_clear'] = all_clear
 
             for alert in alerts:
                 if 'status' not in alert:
@@ -1300,6 +1302,12 @@ class Alerter:
         self.assert_key(all_clear)
         all_clear.update(rule.get('all_clear', {}))
         log.info("all_clear=%r", all_clear)
+
+        _all_clear = rule.get('all_clear')
+        if _all_clear:
+            all_clear.update(_all_clear)
+            del all_clear['all_clear']
+
         #log.info("all_clear=%r", all_clear)
         return all_clear
 

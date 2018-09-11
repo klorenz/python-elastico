@@ -19,6 +19,7 @@ logger = logging.getLogger('elastico.cli.alerter')
 
 alerter_command = command.add_subcommands('alerter', description=__doc__)
 
+
 @alerter_command("expand-rules",
     arg("--list", '-l', choices=['names', 'keys', 'types', 'alerts'], default=None),
     arg("--format", '-f', default=None),
@@ -48,6 +49,7 @@ def alerter_expand_rules(config):
     else:
         pyaml.p(expanded_rules)
 
+
 @alerter_command('check',
     arg('--status', "-s", choices=['ok', 'alert', 'error'], default='ok'),
     arg('alert', nargs="*", default=[]),
@@ -75,6 +77,7 @@ def alerter_check(config):
     alerter.process_rules(action=check)
 
     write_output(config, result)
+
 
 @alerter_command('show',
     arg('item', choices=('rules', 'alerts'), help="choose what to display"),

@@ -529,7 +529,7 @@ def test_alerter_alert_filesystem(monkeypatch, tmpdir):
         if alerter is not None:
             alerter.wipe_status_storage()
 
-def test_alerter_match():
+def test_alerter_match(monkeypatch):
     Alerter.reset_last_check()
     Alerter.reset_status()
     from elastico.connection import elasticsearch
@@ -574,6 +574,9 @@ def test_alerter_match():
                         warning:
                           match: "value:[10 TO 13]"
                           index: test-alerter-match
+                      all_clear:
+                        message: "all ok"
+
         """)
         at_s = "2018-05-05T10:02:00Z"
         _config['arguments'] = dict(at = at_s)
@@ -614,6 +617,7 @@ def test_alerter_match():
                     'match_query': _match_query('value:[0 TO 10]', '09:57', '10:02'),
                     'alert_trigger': False,
                     'match_hits_total': 0,
+                    'all_clear': {'message': 'all ok'},
                     'status': {
                         'current': 'ok',
                         'severity': 0,
@@ -640,6 +644,7 @@ def test_alerter_match():
                     'match_query': _match_query('value:[10 TO 13]', '09:57', '10:02'),
                     'alert_trigger': False,
                     'match_hits_total': 0,
+                    'all_clear': {'message': 'all ok'},
                     'status': {
                         'current': 'ok',
                           'severity': 0,
@@ -668,6 +673,7 @@ def test_alerter_match():
                     'index': 'test-alerter-match',
                      'key': 'value_check',
                      'match': 'value:[0 TO 10]',
+                    'all_clear': {'message': 'all ok'},
                     'match_query': _match_query('value:[0 TO 10]', '10:02', '10:07'),
                      'match_hit': {
                          '_id': '7',
@@ -712,6 +718,7 @@ def test_alerter_match():
                     'at': at_s,
                     'timeframe':{'minutes': 5},
                     'index': 'test-alerter-match',
+                    'all_clear': {'message': 'all ok'},
                     'key': 'value_check',
                     'match': 'value:[10 TO 13]',
                     'match_query': _match_query('value:[10 TO 13]', '10:02', '10:07'),
@@ -745,8 +752,9 @@ def test_alerter_match():
         at_s = "2018-05-05T10:20:00Z"
         alerter.config['arguments']['at'] = at_s
 
-        alerter.check_alerts()
 
+
+        alerter.check_alerts()
 
         print("=== check 3 ===")
         pprint(Alerter.STATUS)
