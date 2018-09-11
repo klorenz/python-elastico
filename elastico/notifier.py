@@ -255,8 +255,6 @@ class Notifier(BaseNotifier):
                     except:
                         subject = '[elastico] notification'
 
-
-
                 message = {
                     'text': text,
                     'data': data_s,

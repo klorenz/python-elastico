@@ -126,7 +126,11 @@ class Config(ConfigDict):
             try:
                 result = arguments[name]
             except KeyError:
-                result = super(Config, self).__getitem__(name)
+                try:
+                    result = super(Config, self).__getitem__(name)
+                except:
+                    raise KeyError(name)
+
         return result
 
     def get(self, name, default=None):
