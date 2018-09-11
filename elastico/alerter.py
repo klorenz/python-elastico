@@ -582,7 +582,7 @@ class Alerter:
 
     def alert_init_status(self, alert):
         log.debug("alert_init_status: %s", alert.__class__.__name__)
-        alert_status = self.read_status(alert)
+        alert_status = Config(self.read_status(alert))
 
         now = self.now()
         every = timedelta(**alert.get('every', {'minutes': 1}))
