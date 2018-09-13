@@ -343,7 +343,7 @@ class Alerter:
                 log.info("refreshed index %s", index)
 
 
-    def do_match(self, rule):
+    def check_match(self, rule):
 
         body = self.get_query(rule, 'match')
         index = rule.get('index')
@@ -442,7 +442,7 @@ class Alerter:
 
         return (result, stdout, stderr)
 
-    def do_command_succeeds(self, alert_data):
+    def check_command_succeeds(self, alert_data):
         cmd = alert_data.getval('command_succeeds')
         (result, stdout, stderr) = self.do_some_command(cmd, alert_data)
 
@@ -456,7 +456,7 @@ class Alerter:
         alert_data['alert_trigger'] = _result
         return _result
 
-    def do_command_fails(self, alert_data):
+    def check_command_fails(self, alert_data):
         cmd = alert_data.get('command_fails')
         (result, stdout, stderr) = self.do_some_command(cmd, alert_data)
 
@@ -469,6 +469,108 @@ class Alerter:
         _result = not (result != expect_code)
         alert_data['alert_trigger'] = _result
         return _result
+
+    def check_conditions(self, alert_data):
+        '''This checks conditions, and returns either False, if there is no
+        alert needed or None, such that there are checked the other conditions.
+        '''
+
+        # alert conditions
+        need_alert = None
+
+        def _get_list(key):
+            val = alert_data.getval(key, [])
+            if not isinstance(val, list):
+                val = [val]
+            return val
+
+        def _check_if(if_list, name, default, result, check_ok):
+            if not if_list:
+                return None
+
+            log.debug("check name=%r default=%r result=%r check_ok=%r", name, default, result, check_ok)
+            _condition_met = default
+            for condition in if_list:
+                log.debug("check name=%r condition=%r, check_ok=%r", name, condition, check_ok)
+                if '.' in condition:
+                    _r_key, _a_type = condition.rsplit('.', 1)
+                    _status = self.read_status(key=_r_key, type=_a_type)
+                    log.debug("check name=%r condition=%r check_ok=%r status=%r", name, condition, check_ok, _status['status']['current'])
+                    if check_ok:
+                        if _status['status']['current'] == 'ok':
+                            _condition_met = result
+                            log.debug("check status='ok' result=%r", result)
+                            break
+                        else:
+                            log.debug("check status='alert'")
+                    else:
+                        if _status['status']['current'] != 'ok':
+                            _condition_met = result
+                            log.debug("check status='alert' result=%r", result)
+                            break
+                        else:
+                            log.debug("check status='ok'")
+                else:
+                    # a rule is in alert if there is any alert active
+                    _status = self.read_status(key=condition, type='rule')
+                    log.debug("check name=%r condition=%r check_ok=%r alerts=%r", name, condition, check_ok, _status['alerts'])
+                    if check_ok:
+                        if len(_status['alerts']) == 0:
+                            _condition_met = result
+                            log.debug("check alerts=[] result=%r", result)
+                            break
+                        else:
+                            log.debug("check alerts=%r result=%r", _status['alerts'], result)
+                    else:
+                        if len(_status['alerts']) > 0:
+                            _condition_met = result
+                            log.debug("check alerts=%r result=%r", _status['alerts'], result)
+                            break
+                        else:
+                            log.debug("check alerts=[]")
+
+            log.debug("_condition_met=%r", _condition_met)
+
+            if _condition_met is True:
+                return None
+            else:
+                return False
+
+
+        if need_alert is None:
+            # check if all are True => if one is ok, result is False
+            need_alert = _check_if(
+                _get_list('if') + _get_list('if-all'),
+                name='if-all',
+                # if all are in alert, condition is met
+                default=True, check_ok=True, result=False
+            )
+            log.info("if-all: need_alert=%s", need_alert)
+
+        if need_alert is None:
+            # check if at least one is true
+            # => starting with True, if one is alert result is True
+            need_alert = _check_if(
+                _get_list('if-any'),
+                name='if-any',
+                # at last one is in alert mode
+                default=False, check_ok=False, result=True
+            )
+            log.info("if-any: need_alert=%s", need_alert)
+
+        if need_alert is None:
+            # if-none is met, if all statuses are "ok"
+            need_alert = _check_if(
+                _get_list('if-not') + _get_list('if-none'),
+                name='if-none',
+                default=True, check_ok=False, result=False
+            )
+            log.info("if-none: need_alert=%s", need_alert)
+
+        log.info("check_conditions: need_alert=%s", need_alert)
+
+        return need_alert
+
 
     def check_alert(self, alert_data, status=None):
         if not isinstance(alert_data, Config):
@@ -497,15 +599,33 @@ class Alerter:
             alert_data['status.previous'] = status
             alert_data['status.current'] = status
 
-        need_alert = False
-        if 'command_fails' in alert_data:
-            need_alert = need_alert or self.do_command_fails(alert_data)
+        need_alert = self.check_conditions(alert_data)
 
-        if 'command_succeeds' in alert_data:
-            need_alert = need_alert or self.do_command_succeeds(alert_data)
+        if need_alert is None:
+            need_alert = False
+            if 'command_fails' in alert_data:
+                need_alert = need_alert or self.check_command_fails(alert_data)
 
-        if 'match' in alert_data:
-            need_alert = need_alert or self.do_match(alert_data)
+            if 'command_succeeds' in alert_data:
+                need_alert = need_alert or self.check_command_succeeds(alert_data)
+
+            if 'match' in alert_data:
+                need_alert = need_alert or self.check_match(alert_data)
+
+
+        # if 'datetime_check' in alert_data:
+        #
+        #     now = self.now()
+        #     if 'before' in alert_data and 'after' in alert_data:
+        #         need_alert = now >= to_dt(alert_data['before']):
+        #         need_alert = need_alert and now <= to_dt(alert_data['after']):
+        #     if 'before' in alert_data:
+        #         need_alert = now >= to_dt(alert_data['before']):
+        #     if 'after' in alert_data:
+        #         need_alert = now <= to_dt(alert_data['after']):
+        #     if 'between' in alert_data:
+        #         need_alert = to_dt()
+        #     if to_dt()
 
         if not need_alert:
             alert_data['status.current'] = 'ok'
@@ -597,7 +717,7 @@ class Alerter:
             alert['status.current'] = alert['status.previous'] = 'ok'
 
         # do next check, if needed
-        if last_check is None or (now - every) >= last_check:
+        if last_check is None or (now - every) >= check_conditions:
             alert['status.next_check'] = 0
         else:
             next_check = (every - (now-last_check))
@@ -915,6 +1035,8 @@ class Alerter:
             # r.update(deepcopy(self.config.get('alerter.data', {})))
 
             # copy arguments
+
+            # TODO: do not copy arguments!!!
             r.update(deepcopy(self.config.get('arguments', {})))
 
             # for k,v in self.config.items():

@@ -1,10 +1,11 @@
-import yaml, io, pyaml, re
+import yaml, io, pyaml, re, pytest
 from textwrap import dedent, indent
 from elastico.util import PY3, to_dt, dt_isoformat
 from elastico.alerter import Alerter
 from elastico.config import Config
 from pprint import pprint
 from elastico.notifier import Notifier
+
 
 if PY3:
     unicode = str
@@ -302,7 +303,7 @@ def test_alerter_alert(monkeypatch):
         """))
         alerter.config.update(kwargs)
 
-        monkeypatch.setattr(alerter, 'do_match', mock_matching_succeeds)
+        monkeypatch.setattr(alerter, 'check_match', mock_matching_succeeds)
         return alerter
 
     at = to_dt("2018-05-05 10:07:00")
@@ -385,7 +386,7 @@ def test_alerter_alert_elasticsearch(monkeypatch):
                     return False
                 return True
 
-            monkeypatch.setattr(alerter, 'do_match', mock_matching_succeeds)
+            monkeypatch.setattr(alerter, 'check_match', mock_matching_succeeds)
 
             return alerter
 
@@ -477,7 +478,7 @@ def test_alerter_alert_filesystem(monkeypatch, tmpdir):
                 return True
             alerter.config['arguments'] = kwargs
 
-            monkeypatch.setattr(alerter, 'do_match', mock_matching_succeeds)
+            monkeypatch.setattr(alerter, 'check_match', mock_matching_succeeds)
             return alerter
 
         at = to_dt("2018-05-05 10:02:00")
@@ -528,6 +529,79 @@ def test_alerter_alert_filesystem(monkeypatch, tmpdir):
     finally:
         if alerter is not None:
             alerter.wipe_status_storage()
+
+condition_data = dict(
+    if_ok = dict(
+        input = {'if': ['is-alert']},
+        expect = None),
+
+    if_fail = dict(
+        input = { 'if': ['is-ok'] },
+        expect = False),
+
+    if_none_fail = dict(
+        input  = { 'if-none': ['is-alert.fatal', 'is-ok'] },
+        expect = False),
+
+    if_none_ok = dict(
+        input  = { 'if-none': ['is-ok.fatal', 'is-ok-2.warning'] },
+        expect = None ),
+
+    if_all_ok_1 = dict(
+        input = {'if-all': ['is-alert-2.warning', 'is-alert-2.fatal']},
+        expect = None),
+
+    if_all_ok_2 = dict(
+        input = {'if-all': ['is-alert', 'is-alert-2.fatal']},
+        expect = None),
+
+    if_all_fails = dict(
+        input = {'if-all': ['is-alert', 'is-ok.fatal']},
+        expect = False),
+
+    if_any_ok = dict(
+        input = {'if-any': ['is-ok-2', 'is-alert.fatal']},
+        expect = None),
+
+    if_any_fails = dict(
+        input = {'if-any': ['is-ok-2', 'is-ok.fatal']},
+        expect = False),
+)
+
+@pytest.mark.parametrize("input", [ k for k in condition_data.keys() ])
+def test_alerter_if_condition(input):
+    Alerter.reset_last_check()
+    Alerter.reset_status()
+
+    Alerter.STATUS = {
+        'fatal': {
+            'is-alert': { 'status': {'current': 'alert'} },
+            'is-ok': { 'status': {'current': 'ok' } },
+            'is-ok-2': { 'status': {'current': 'ok' } },
+            'is-alert-2': { 'status': {'current': 'alert'} },
+        },
+        'warning': {
+            'is-alert': { 'status': {'current': 'ok' } },
+            'is-ok': { 'status': {'current': 'ok' } },
+            'is-ok-2': { 'status': {'current': 'ok' } },
+            'is-alert-2': { 'status': {'current': 'alert'} },
+        },
+        'rule': {
+            'is-alert': { 'alerts': ['fatal'] },
+            'is-alert-2': { 'alerts': ['fatal', 'warning'] },
+            'is-ok': { 'alerts': [] },
+            'is-ok-2': { 'alerts': [] },
+        }
+    }
+    alerter = Alerter()
+
+    # False is returned, if rule/alert in condition is in status alert
+    # else it is None
+    input = condition_data[input]
+    alert_data = input['input']
+    assert alerter.check_conditions(Config(alert_data)) is input['expect']
+
+
 
 def test_alerter_match(monkeypatch):
     Alerter.reset_last_check()
@@ -883,7 +957,7 @@ def test_alerter_email(monkeypatch):
     def mock_matching_fails(*args):
         return False
 
-    monkeypatch.setattr(alerter, 'do_match', mock_matching_succeeds)
+    monkeypatch.setattr(alerter, 'check_match', mock_matching_succeeds)
     from smtplib import SMTP
 
     from elastico import util

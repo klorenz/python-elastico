@@ -262,13 +262,17 @@ def stripped(s, count=100):
 def get_alerts(_alerts, context):
     from .config import Config
 
-    if isinstance(_alerts, dict):
-        _tmp = []
-        for k,v in _alerts.items():
-            _value = Config.object({'type': context.format(k)})
-            _value.update(deepcopy(v))
-            _tmp.append(_value)
-        _alerts = _tmp
+    if isinstance(_alerts, list):
+        result = {}
+        for a in _alerts:
+            result[a['type']] = a
+        _alerts = result
+    else:
+        for k,v in _alerts:
+            if 'type' not in v:
+                v['type'] = k
 
-    return _alerts
+    return Config.object(_alerts)
 
+def F(s):
+    return s.format(**sys._getframe(1).f_locals)
