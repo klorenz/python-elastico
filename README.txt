@@ -122,7 +122,7 @@ foo:
   **Example**
 
   You want to alert, if diskspace on servers is running low.  Mountpoints
-  are on servers are configured in a uniform way.  In this example you find also a reference to some other data, which will be expanded when evaluating the `foreach` clause.  
+  are on servers are configured in a uniform way.  In this example you find also a reference to some other data, which will be expanded when evaluating the `foreach` clause.
 
   It works pretty much like the regular YAML expansion with the difference, that the data needs not to be in the same YAML file, but can be at a different place of the config file.
 
@@ -208,7 +208,6 @@ and raise the alerts:
 
   - `email`
 
-
-
-
+-- need a feature to have different rules for night than day
+   -> at match, I need a daytime match, i.e. to handle backup downtimes
 
