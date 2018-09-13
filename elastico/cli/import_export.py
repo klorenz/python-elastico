@@ -1,4 +1,4 @@
-from .cli import command, arg
+from .cli import command, arg, opt
 from ..util import F
 from os.path import abspath, join, dirname, exists
 import os, tempfile, shutil, json

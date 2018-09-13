@@ -717,7 +717,7 @@ class Alerter:
             alert['status.current'] = alert['status.previous'] = 'ok'
 
         # do next check, if needed
-        if last_check is None or (now - every) >= check_conditions:
+        if last_check is None or (now - every) >= last_check:
             alert['status.next_check'] = 0
         else:
             next_check = (every - (now-last_check))
