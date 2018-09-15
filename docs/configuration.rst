@@ -299,5 +299,25 @@ passed as status to elasticsearch), you can specify:
 So ``input``, ``stdout`` and ``stderr`` are managed arguments and are not
 directly passed to :py:class:`subprocess.Popen`.
 
+Trigger Alerts
+""""""""""""""
+
+Alerts are triggered if some condition is met.
+
+Trigger Type: match
+~~~~~~~~~~~~~~~~~~~
+
+An elasticsearch match.
+
+A trigger can have:
+
+
+
+.. code-block:: yaml
+
+    require: all
+
+
+
 Serve
 """""

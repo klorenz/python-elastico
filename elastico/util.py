@@ -47,9 +47,9 @@ def dt_isoformat(dt, sep='T', timespec='seconds'):
 
     return result+"Z"
 
-def to_dt(x):
+def to_dt(x, *args, **kwargs):
     if not isinstance(x, datetime):
-        x = dt_parse(x)
+        x = dt_parse(x, *args, **kwargs)
     if x.tzinfo is None:
         return pytz.UTC.localize(x)
     else:

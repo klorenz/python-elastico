@@ -76,7 +76,9 @@ class Alerter:
                 pass
 
     def now(self):
-        return to_dt(self.config.get('at', datetime.utcnow()))
+        now = to_dt(self.config.get('at', datetime.utcnow()))
+        log.debug("now: %s", now)
+        return now
 
     def write_status(self, rule): #,
         # if self.config.get('dry_run'):
@@ -288,6 +290,7 @@ class Alerter:
 
     do_alert = notify_alert
 
+
     def get_query(self, rule, name):
         body = None
         query = rule.getval(name)
@@ -312,13 +315,18 @@ class Alerter:
         else:
             endtime = self.now()
 
+
         if 'starttime' in rule:
             starttime = to_dt(rule.getval('starttime'))
         else:
             starttime = endtime - timedelta(**timeframe)
 
+        log.debug("starttime=%s endtime=%s", starttime, endtime)
+
         starttime = dt_isoformat(starttime, 'T', 'seconds')#+"Z"
         endtime   = dt_isoformat(endtime, 'T', 'seconds')#+"Z"
+
+
 
         return {
             'query': {'bool': {'must': [
@@ -343,14 +351,19 @@ class Alerter:
                 log.info("refreshed index %s", index)
 
 
-    def check_match(self, rule):
+    def check_match(self, trigger, rule):
+        log.debug('check_match trigger=%r rule=%r', trigger, rule)
+        _rule = deepcopy(rule)
+        _rule.update(trigger)
+        _rule = Config(_rule)
 
-        body = self.get_query(rule, 'match')
+        body = self.get_query(_rule, 'match')
+        log.debug("query body: %r", body)
         index = rule.get('index')
         body['size'] = 1
 
         assert index, "index must be present in rule %s" % rule.getval('name')
-        rule['match_query'] = body
+        trigger['match_query'] = body
 
         key = rule.getval('key')
         type = rule.getval('type')
@@ -359,17 +372,17 @@ class Alerter:
             self._refresh_index(index)
             results = self.es.search(index=index, body=body)
             log.debug("results: %s", results)
-            rule['match_hits_total'] = results['hits']['total']
-            if rule['match_hits_total']:
-                rule['match_hit'] = Config.object(results['hits']['hits'][0])
+            trigger['match_hits_total'] = results['hits']['total']
+            if trigger['match_hits_total']:
+                trigger['match_hit'] = Config.object(results['hits']['hits'][0])
         else:
-            rule['match_hits_total'] = 0
+            trigger['match_hits_total'] = 0
             results = {'hits': {'total': 0}}
 
         # there should be at least min_matches
-        min_total = rule.get('matches_min')
+        min_total = trigger.get('matches_min')
         # there should be at most max_matches
-        max_total = rule.get('matches_max')
+        max_total = trigger.get('matches_max')
         # ... otherwise we will alert
 
         # first check if totals are within given bounds
@@ -391,7 +404,7 @@ class Alerter:
             key, type, results['hits']['total'], min_total, max_total, _result,
             index, json.dumps(rule['match_query']))
 
-        rule['alert_trigger'] = _result
+        trigger['alert_trigger'] = _result
         return _result
 
 
@@ -442,33 +455,75 @@ class Alerter:
 
         return (result, stdout, stderr)
 
-    def check_command_succeeds(self, alert_data):
-        cmd = alert_data.getval('command_succeeds')
-        (result, stdout, stderr) = self.do_some_command(cmd, alert_data)
+    def check_command(self, trigger, data):
+        cmd = data.format(trigger.get('command'), trigger)
+        (result, stdout, stderr) = self.do_some_command(cmd, trigger)
+        data['alert_trigger'] = result != 0
+        return alert_trigger
 
-        expect_code = alert_data.get('expect.code', 0)
-
-        log.info("msg='command_succeeds' "
-            "cmd=%r result=%r expect=%r stdout=%r stderr=%r",
-            cmd, result, expect_code, stripped(stdout), stripped(stderr))
-
-        _result = not (result == expect_code)
-        alert_data['alert_trigger'] = _result
+    def check_require(self, items, default, invert, data):
+        _result = default
+        for k,v in sorted(items):
+            if k == 'require': continue
+            if invert:
+                if not self.check_trigger(v, data):
+                    _result = result
+                    break
+            else:
+                if self.check_trigger(v, data):
+                    _result = result
+                    break
         return _result
 
-    def check_command_fails(self, alert_data):
-        cmd = alert_data.get('command_fails')
-        (result, stdout, stderr) = self.do_some_command(cmd, alert_data)
 
-        expect_code = alert_data.get('expect.code', 0)
+    def perform_check(self, trigger, alert_data):
+        need_alert = self.check_conditions(alert_data)
 
-        log.info("msg='command_fails' "
-            "cmd=%r result=%r expect=%r stdout=%r stderr=%r",
-            cmd, result, expect_code, stripped(stdout), stripped(stderr))
+        log.debug("trigger=%r alert_data=%r", trigger, alert_data)
 
-        _result = not (result != expect_code)
-        alert_data['alert_trigger'] = _result
-        return _result
+        if need_alert is not None:
+            #trigger['alert_precondition']
+            return need_alert
+
+        if 'check' in alert_data:
+            return self.check(alert_data['check'], alert_data)
+
+        require = trigger.get('require')
+        if require:
+            items = trigger.items()
+            if require == 'all':
+                result = self.check_require(items, default=True, invert=True, data=alert_data)
+                trigger['alert_trigger'] = result
+                return result
+
+            elif require == 'any':
+                result = self.check_require(items, default=False, invert=False, data=alert_data)
+                trigger['alert_trigger'] = result
+                return result
+
+            elif require == 'none':
+                result = self.check_require(items, default=True, invert=False, data=alert_data)
+                trigger['alert_trigger'] = result
+                return result
+
+            elif require == 'match':
+                return self.check_match(trigger, alert_data)
+
+            elif require == 'command':
+                return self.check_command(trigger, alert_data)
+
+            elif require == 'time':
+                return self.check_time(trigger, alert_data)
+
+            raise ValueError("cannot handle require %r" % require)
+
+        else:
+            # match or command
+            if 'match' in trigger:
+                return self.check_match(trigger, alert_data)
+            elif 'command' in trigger:
+                return self.check_command(trigger, alert_data)
+
 
     def check_conditions(self, alert_data):
         '''This checks conditions, and returns either False, if there is no
@@ -534,8 +589,8 @@ class Alerter:
             if _condition_met is True:
                 return None
             else:
+                alert_data['alert_condition_fails'] = name
                 return False
-
 
         if need_alert is None:
             # check if all are True => if one is ok, result is False
@@ -567,6 +622,18 @@ class Alerter:
             )
             log.info("if-none: need_alert=%s", need_alert)
 
+        if need_alert is None:
+            now = self.now()
+            if 'if-before' in alert_data:
+                before = to_dt(alert_data['if-before'], default=now)
+                if now >= before:
+                    need_alert = False
+
+            if 'if-after' in alert_data:
+                after = to_dt(alert_data['if-after'], default=now)
+                if now < after:
+                    need_alert = False
+
         log.info("check_conditions: need_alert=%s", need_alert)
 
         return need_alert
@@ -580,6 +647,8 @@ class Alerter:
 
         logger_name = alert_data.getval('logger', 'elastico.alerter.%s' % _key)
         log = logging.getLogger(logger_name)
+
+        log.debug("check_alert")
 
         if status is None:
             # get last status of this alert_data
@@ -599,34 +668,9 @@ class Alerter:
             alert_data['status.previous'] = status
             alert_data['status.current'] = status
 
-        need_alert = self.check_conditions(alert_data)
+        need_alert = self.perform_check(alert_data, alert_data)
 
-        if need_alert is None:
-            need_alert = False
-            if 'command_fails' in alert_data:
-                need_alert = need_alert or self.check_command_fails(alert_data)
-
-            if 'command_succeeds' in alert_data:
-                need_alert = need_alert or self.check_command_succeeds(alert_data)
-
-            if 'match' in alert_data:
-                need_alert = need_alert or self.check_match(alert_data)
-
-
-        # if 'datetime_check' in alert_data:
-        #
-        #     now = self.now()
-        #     if 'before' in alert_data and 'after' in alert_data:
-        #         need_alert = now >= to_dt(alert_data['before']):
-        #         need_alert = need_alert and now <= to_dt(alert_data['after']):
-        #     if 'before' in alert_data:
-        #         need_alert = now >= to_dt(alert_data['before']):
-        #     if 'after' in alert_data:
-        #         need_alert = now <= to_dt(alert_data['after']):
-        #     if 'between' in alert_data:
-        #         need_alert = to_dt()
-        #     if to_dt()
-
+        log.debug("checks performed -- name=%r, status=%r, need_alert=%r, alert_data=%r", alert_data.getval('name'), status, need_alert, alert_data)
         if not need_alert:
             alert_data['status.current'] = 'ok'
         else:
@@ -670,24 +714,6 @@ class Alerter:
                         alert_data['status.current'] = 'realert'
                     log.warning("      trigger alert -> %s", alert_data['status.current'])
 
-###>
-#            log.info("      trigger alert")
-#
-#            self.do_alert(alert_data)
-#
-#        else:
-#            if status == 'alert':
-#                log.info("      trigger ok")
-#                self.do_alert(alert_data, all_clear=last_rule)
-#            else:
-#                log.info("      trigger nothing")
-#
-#        if not alert_data.get('dry_run'):
-#            self.write_status(alert_data)
-#
-#        # here we can expand everything
-#        # check result and log
-###<
         return alert_data
 
     def iterate_alerts(self):
@@ -708,13 +734,17 @@ class Alerter:
         every = timedelta(**alert.get('every', {'minutes': 1}))
 
         # initialize new status
-        if alert_status is not None:
-            last_check = to_dt(alert_status['at'])
+        if alert_status:
+            #last_check = self.now()
+            last_check = to_dt(alert_status['@timestamp'])
+            log.debug("alert_status=%r", alert_status)
             alert['status.previous'] = alert_status['status.current']
             alert['status.current'] = alert_status['status.current']
         else:
             last_check = None
             alert['status.current'] = alert['status.previous'] = 'ok'
+
+        log.debug("last_check=%r", last_check)
 
         # do next check, if needed
         if last_check is None or (now - every) >= last_check:
@@ -739,6 +769,7 @@ class Alerter:
 
     def check_alerts(self):
         self._refreshed = {}
+        log.debug("check_alerts")
 
         rules = self.config.get('alerter.rules', [])
         now = self.now()
@@ -747,8 +778,11 @@ class Alerter:
 
             for alert in alerts:
                 self.alert_init_status(alert)
+
                 if alert['status.next_check'] == 0: # no wait time, so now
                     self.check_alert(alert)
+                else:
+                    log.debug("next check: %s", alert['status.next_check'])
 
             rule_status = self.rule_init_status(rule)
 
@@ -777,11 +811,11 @@ class Alerter:
             if was_ok:
                 done_notify = []
             else:
-                done_notify = _get_list(rule_status, 'notify')
+                done_notify = _get_list(rule_status, 'trigger')
 
-            notify_lists = [_get_list(a, 'notify') for a in was_alert]
+            notify_lists = [_get_list(a, 'trigger') for a in was_alert]
             done_notify = list(set(chain(done_notify, *notify_lists)))
-            rule_status['notify'] = done_notify
+            rule_status['trigger'] = done_notify
 
             # update list of alerts done on this rule
             if was_ok:
@@ -800,7 +834,7 @@ class Alerter:
             if was_alert and now_ok:
                 # have to send all-clear for this rule
                 rule_status['status.end'] = dt_isoformat(now)
-                all_clear = self.init_all_clear(rule, rule_status['notify'])
+                all_clear = self.init_all_clear(rule, rule_status['trigger'])
                 self.do_alert(all_clear)
                 rule_status['all_clear'] = all_clear
 
@@ -824,65 +858,6 @@ class Alerter:
         if self.es:
             self.refresh_status_storage_index()
 
-
-    def process_rules(self, action=None, **arguments):
-        self._refreshed = {}
-        if 'arguments' not in self.config:
-            self.config['arguments'] = {}
-
-        self.config['arguments'].update(arguments)
-        rules = self.config.get('alerter.rules', [])
-        log.debug("rules: %s", rules)
-
-        now = self.now()
-        visited_keys = set()
-        unresolved_deps = {}
-
-        for rule, alerts in self.iterate_alerts():
-
-            every = timedelta(**alert.get('every', {'minutes': 1}))
-            alert_status = self.read_status(alert)
-            last_check = to_dt(alert_status['at'])
-
-            log.debug("last_check=%s, now=%s, every=%s", last_check, now, every)
-
-            if (now - every) >= last_check:
-                alert_status['status.next_check'] = 0
-                self.check_alert()
-                #    collected_alerts.append(self.check_alert(alert_data))
-            else:
-                alert_status['status.next_check'] = every - (now-last_check)
-                log.info("      next check in %s", every - (now-last_check))
-
-        #for alert in iterate_alerts()
-
-        # # sort rules first
-        # ordered_rules = []
-        # for rule in rules:
-        #      rule.get('depends')
-
-        for rule in rules:
-            if not rule: continue
-
-            log.debug("rule: %s", rule)
-
-            if isinstance(rule, string):
-                rule = rules[rule]
-
-            rule = self.config.assimilate(rule)
-            # TODO: why is assimilate needed here?  should already be done
-
-            _class_name = rule.getval('class')
-            if _class_name is None:
-                _class_name = rule.getval('name')
-
-            log.debug("rule: %s", rule)
-            log.info("=== RULE <%s> =========================", _class_name)
-
-            self.process(rule, action=action)
-
-        if self.es:
-            self.refresh_status_storage_index()
 
     def get_rule_datasets(self, rule):
         # create a product of all items in 'each' to multiply the rule
@@ -1326,11 +1301,11 @@ class Alerter:
                 if was_ok:
                     notify = []
                 else:
-                    notify = _get_list(rule_status, 'notify')
+                    notify = _get_list(rule_status, 'trigger')
 
-                notify_lists = [_get_list(a, 'notify') for a in was_alert]
+                notify_lists = [_get_list(a, 'trigger') for a in was_alert]
                 notify = list(set(chain(notify, *notify_lists)))
-                rule_status['notify'] = notify
+                rule_status['trigger'] = notify
 
                 # alerts
                 if was_ok:
@@ -1348,7 +1323,7 @@ class Alerter:
                     all_clear.update(r)
                     all_clear['type'] = 'all-clear'
                     all_clear['status.current'] = 'ok'
-                    all_clear['notify'] = rule_status['notify']
+                    all_clear['trigger'] = rule_status['trigger']
                     self.assert_key(all_clear)
                     all_clear.update(r.get('all_clear', {}))
                     log.info("all_clear=%r", all_clear)
@@ -1420,7 +1395,7 @@ class Alerter:
         all_clear.update(rule)
         all_clear['type'] = 'all-clear'
         all_clear['status.current'] = 'ok'
-        all_clear['notify'] = notify
+        all_clear['trigger'] = notify
         self.assert_key(all_clear)
         all_clear.update(rule.get('all_clear', {}))
         log.info("all_clear=%r", all_clear)

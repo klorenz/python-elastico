@@ -5,6 +5,8 @@ from elastico.alerter import Alerter
 from elastico.config import Config
 from pprint import pprint
 from elastico.notifier import Notifier
+import logging
+log = logging.getLogger('test')
 
 
 if PY3:
@@ -275,7 +277,7 @@ def test_alerter_alert(monkeypatch):
     Alerter.reset_last_check()
     Alerter.reset_status()
 
-    def mock_matching_succeeds(rule):
+    def mock_matching_succeeds(trigger, rule):
         if rule['match'] == 'x':
             rule['match_hits_total'] = 4
             rule['match_hit'] = {'foo': 'bar'}
@@ -328,7 +330,7 @@ def test_alerter_alert(monkeypatch):
  'rule': {'test': {'@timestamp': '2018-05-05T10:07:00Z',
                    'key': 'test',
                    'name': 'test',
-                   'notify': [],
+                   'trigger': [],
                    'alerts': [],
                    'status': {
                         'id': 'test_2018-05-05T10:07:00Z',
@@ -374,7 +376,7 @@ def test_alerter_alert_elasticsearch(monkeypatch):
             """), es_client=es)
             alerter.config['arguments'] = kwargs
 
-            def mock_matching_succeeds(rule):
+            def mock_matching_succeeds(trigger, rule):
                 if rule['match'] == 'x':
                     rule['match_hits_total'] = 4
                     rule['match_hit'] = {'foo': 'bar'}
@@ -442,6 +444,22 @@ def test_alerter_alert_elasticsearch(monkeypatch):
     finally:
         alerter.wipe_status_storage()
 
+def test_checks():
+    alerter = Alerter(config=Config.object("""
+        alerter:
+            rules:
+                - name: test
+                  alerts:
+                    warning:
+                        check:
+                            require: command
+                            command: >
+                                echo "foo" && exit 0
+                    fatal:
+                        match: y
+    """))
+
+
 def test_alerter_alert_filesystem(monkeypatch, tmpdir):
     from elastico.connection import elasticsearch
     Alerter.reset_last_check()
@@ -465,7 +483,7 @@ def test_alerter_alert_filesystem(monkeypatch, tmpdir):
                                 match: y
             """ % tmpdir.strpath), es_client=es)
 
-            def mock_matching_succeeds(rule):
+            def mock_matching_succeeds(trigger, rule):
                 if rule['match'] == 'x':
                     rule['match_hits_total'] = 4
                     rule['match_hit'] = {'foo': 'bar'}
@@ -566,6 +584,30 @@ condition_data = dict(
     if_any_fails = dict(
         input = {'if-any': ['is-ok-2', 'is-ok.fatal']},
         expect = False),
+
+    if_before_hours_ok = dict(
+        input = {'if-before': '14:00:00'},
+        expect = None),
+
+    if_before_mins_ok = dict(
+        input = {'if-before': '49:00'},
+        expect = None),
+
+    if_before_hours_fails = dict(
+        input = {'if-before': '13:00:00'},
+        expect = False),
+
+    if_after_hours_fails = dict(
+        input = {'if-after': '14:00:00'},
+        expect = False),
+
+    if_after_mins_fails = dict(
+        input = {'if-after': '49:00'},
+        expect = False),
+
+    if_after_hours_ok = dict(
+        input = {'if-after': '13:00:00'},
+        expect = None),
 )
 
 @pytest.mark.parametrize("input", [ k for k in condition_data.keys() ])
@@ -593,7 +635,7 @@ def test_alerter_if_condition(input):
             'is-ok-2': { 'alerts': [] },
         }
     }
-    alerter = Alerter()
+    alerter = Alerter(config={'at': '2018-09-15T13:47:23Z'})
 
     # False is returned, if rule/alert in condition is in status alert
     # else it is None
@@ -603,7 +645,7 @@ def test_alerter_if_condition(input):
 
 
 
-def test_alerter_match(monkeypatch):
+def test_alerter_match():
     Alerter.reset_last_check()
     Alerter.reset_status()
     from elastico.connection import elasticsearch
@@ -655,6 +697,9 @@ def test_alerter_match(monkeypatch):
         at_s = "2018-05-05T10:02:00Z"
         _config['arguments'] = dict(at = at_s)
 
+        print("=== check 1 ===")
+        log.debug("=== check 1 ===")
+
         alerter = Alerter(config =_config, es_client=es)
         alerter.check_alerts()
 
@@ -675,7 +720,6 @@ def test_alerter_match(monkeypatch):
                         },
                     }
 
-        print("=== check 1 ===")
         pprint(Alerter.STATUS)
 
         assert (1, Alerter.STATUS) == (1, {
@@ -704,7 +748,7 @@ def test_alerter_match(monkeypatch):
                           'key': 'value_check',
                           'name': 'value-check',
                           'status': {'severity': 0},
-                          'notify': [],
+                          'trigger': [],
                           'type': 'rule'}},
             'warning': {
                 'value_check': {
@@ -727,6 +771,10 @@ def test_alerter_match(monkeypatch):
                 }
             }
         })
+
+        print("=== check 2 ===")
+        log.debug("=== check 2 ===")
+
         alerter = Alerter(config =_config, es_client=es)
         at_s = "2018-05-05T10:07:00Z"
         alerter.config['arguments'] = dict(at=at_s)
@@ -734,7 +782,6 @@ def test_alerter_match(monkeypatch):
 
         start_s = at_s
 
-        print("=== check 2 ===")
         pprint(Alerter.STATUS)
 
         assert (2, Alerter.STATUS) == (2, {
@@ -783,7 +830,7 @@ def test_alerter_match(monkeypatch):
                         },
                           'key': 'value_check',
                           'name': 'value-check',
-                          'notify': [],
+                          'trigger': [],
                           'type': 'rule'}},
             'warning': {
                 'value_check': {
@@ -821,16 +868,18 @@ def test_alerter_match(monkeypatch):
                 }
             }
         })
+        
+        print("=== check 3 ===")
+        log.debug("=== check 3 ===")
 
         alerter = Alerter(config =_config, es_client=es)
         at_s = "2018-05-05T10:20:00Z"
-        alerter.config['arguments']['at'] = at_s
+        alerter.config['arguments'] = {'at': at_s}
 
 
 
         alerter.check_alerts()
 
-        print("=== check 3 ===")
         pprint(Alerter.STATUS)
 
         assert (3, Alerter.STATUS) == (3, {
@@ -877,14 +926,14 @@ def test_alerter_match(monkeypatch):
                                         'key': 'value_check',
                                         'message': 'all ok',
                                         'name': 'value-check',
-                                        'notify': [],
+                                        'trigger': [],
                                         'status': {'current': 'ok'},
                                         'timeframe': {'minutes': 5},
                                         'type': 'all-clear'},
                     'alerts': list(set(['fatal', 'warning'])),
                           'key': 'value_check',
                           'name': 'value-check',
-                          'notify': [],
+                          'trigger': [],
                           'type': 'rule'}},
             'warning': {
                 'value_check': {
@@ -924,11 +973,14 @@ def test_alerter_email(monkeypatch):
         alerter:
             alert_defaults:
                 hummhomm:
-                    notify:
-                    - notification: treebeard
-                      transport: email
-                      email:
-                        to: 'treebeard@middle.earth'
+                    actions:
+                        notify-treebeard:
+                          transport: email
+                          email:
+                            to: 'treebeard@middle.earth'
+
+                    trigger:
+                        - notify-treebeard
 
             rules:
                 - name: test
@@ -942,7 +994,7 @@ def test_alerter_email(monkeypatch):
                         match: y
     """))
 
-    def mock_matching_succeeds(rule):
+    def mock_matching_succeeds(trigger, rule):
         if rule['match'] == 'x':
             rule['match_hits_total'] = 4
             rule['match_hit'] = {'foo': 'bar'}
@@ -1018,11 +1070,14 @@ def test_alerter_email(monkeypatch):
                   text: |
                     humm homm
                 name: test
-                notify:
-                  - email:
+                trigger:
+                  - notify-treebeard
+                actions:
+                  notify-treebeard:
+                    email:
                       to: 'treebeard@middle.earth'
-                    notification: treebeard
-                    transport: email
+                    action: treebeard
+                    type: email
                 status:
                   current: alert
                   id: test_2018-05-05T10:07:00Z
@@ -1051,11 +1106,14 @@ def test_alerter_email(monkeypatch):
               text: |
                 humm homm
             name: test
-            notify:
-              - email:
+            trigger:
+              - notify-treebeard
+            actions:
+              notify-treebeard:
+                email:
                   to: 'treebeard@middle.earth'
-                notification: treebeard
-                transport: email
+                action: treebeard
+                type: email
             status:
               current: alert
               id: test_2018-05-05T10:07:00Z
@@ -1099,14 +1157,16 @@ def test_alerter_command():
                 - name: test
                   alerts:
                     hummhomm1:
-                      command_succeeds: >
-                        bash -c "exit 0"
+                      command: >
+                        exit 0
+
                     hummhomm2:
-                      command_fails: >
-                        bash -c "exit 1"
+                      command: >
+                        (echo "this fails" && exit 1) || exit 0
+
                     hummhomm3:
-                      command_succeeds: >
-                        bash -c "exit 1"
+                      command: >
+                        exit 1
     """))
 
     at = to_dt("2018-05-05 10:07:00")
@@ -1121,7 +1181,7 @@ def test_alerter_command():
                            'command_succeeds': 'bash -c "exit 0"\n',
                            'key': 'test',
                            'name': 'test',
-                           'notify': ['sound'],
+                           'trigger': ['sound'],
                            'result': {'exit_code': 0},
                            'status': {
                             'current': 'ok',
@@ -1137,7 +1197,7 @@ def test_alerter_command():
                            'command_fails': 'bash -c "exit 1"\n',
                            'key': 'test',
                            'name': 'test',
-                           'notify': ['sound'],
+                           'trigger': ['sound'],
                            'result': {'exit_code': 1},
                            'status': {'current': 'ok',
                                             'id': 'test_2018-05-05T10:07:00Z',
@@ -1166,7 +1226,7 @@ def test_alerter_command():
                                                          'status': 'ok',
                                                          'stdout': True,
                                                          'transport': 'command'}},
-                           'notify': ['sound'],
+                           'trigger': ['sound'],
  'result': {'exit_code': 1},
                            'status': {'current': 'alert',
                                             'id': 'test_2018-05-05T10:07:00Z',
@@ -1179,7 +1239,7 @@ def test_alerter_command():
                       'alerts': [],
                       'key': 'test',
                       'name': 'test',
-                      'notify': [],
+                      'trigger': [],
                       'status': {
                         'id': 'test_2018-05-05T10:07:00Z',
                         'severity': 1,
@@ -1207,7 +1267,7 @@ def test_do_alert(monkeypatch):
         'type': 'the_type',
         'name': 'the_name',
         'status': {'current': 'alert'},
-        'notify': [
+        'trigger': [
             'an-email'
         ]
     })
@@ -1251,7 +1311,7 @@ def test_do_alert(monkeypatch):
                  'notification': 'an-email',
                  'status': 'dry_run',
                  'transport': 'email'}},
- 'notify': ['an-email'],
+ 'trigger': ['an-email'],
  'status': {'current': 'alert'},
  'type': 'the_type'}
 

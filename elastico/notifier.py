@@ -201,7 +201,7 @@ class Notifier(BaseNotifier):
         return (text, data, plain, html)
 
     def transport_notification(self, message, notify_spec, data):
-        notify_class = Notifier.transports[notify_spec['transport']]
+        notify_class = Notifier.transports[notify_spec['type']]
         notifier = notify_class(self.config, notify_spec)
         notifier.notify(message, notify_spec, data)
 
@@ -209,19 +209,21 @@ class Notifier(BaseNotifier):
         if data is None:
             data = self.data
         if notify is None:
-            notify = data.get('notify', [])
+            notify = data.get('trigger', [])
 
         # compose predefined notifications
-        notify_specs = self.config.get('notifications', {})
+        notify_specs = self.config.get('actions', {})
         for prefix in self.prefixes:
-            notify_specs.update(self.config.get('%s.notifications' % prefix, {}))
+            notify_specs.update(self.config.get('%s.actions' % prefix, {}))
+
+        notify_specs.update(data.get('actions',{}))
 
         # normalize notify data
         if isinstance(notify, dict):
             _tmp = []
             for k,v in notify.items():
                 _notification = deepcopy(v)
-                _notification['notification'] = k
+                _notification['action'] = k
                 _tmp.append(_notification)
             notify = _tmp
 
@@ -232,11 +234,11 @@ class Notifier(BaseNotifier):
 
                 if isinstance(notify_name, string):
                     notify_spec.update(deepcopy(notify_specs[notify_name]))
-                    notify_spec['notification'] = notify_name
+                    notify_spec['action'] = notify_name
 
                 else:
                     notify_spec.update(deepcopy(notify_name))
-                    notify_name = notify_spec['notification']
+                    notify_name = notify_spec['action']
 
                 underscore = Config(data.get('match_hit._source', {}))
 
@@ -303,5 +305,5 @@ class Notifier(BaseNotifier):
 
             log.info("      notification %s -> %s", notify_name, notify_spec['status'])
 
-            self.update_data('notifications', notifications)
+            self.update_data('actions', notifications)
 
