@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from .notifier import Notifier
 from .config import Config
 from .util import to_dt, dt_isoformat, get_alerts
+from .cli import main
 
 log = logging.getLogger('elastico.server')
 
@@ -44,7 +45,8 @@ class Server:
                     )
 
             self.config.refresh(at=_at)
-            self.config.logging_setup()
+            if not main.debug:
+                self.config.logging_setup()
 
             if count is None:
                 count = int(self.get_value('serve.count', -1))

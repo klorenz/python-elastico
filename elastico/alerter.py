@@ -750,13 +750,27 @@ class Alerter:
 
         log.debug("last_check=%r", last_check)
 
-        # do next check, if needed
-        if last_check is None or (now - every) >= last_check:
-            alert['status.next_check'] = 0
+        next_check = alert.get('status.next_check',0)
+
+        if next_check > 0:
+            next_check = (next_check - (now-last_check))
+        elif last_check is None:
+            next_check = timedelta(seconds=0)
         else:
             next_check = (every - (now-last_check))
-            alert['status.next_check'] = next_check.total_seconds()
-            log.info("      next check in %s", next_check)
+
+        next_check_s = next_check.total_seconds()
+
+        alert['status.next_check'] = next_check_s > 0 and next_check_s or 0
+        log.info("      next check in %s", next_check)
+
+        # # do next check, if needed
+        # if last_check is None or (now - every) >= last_check:
+        #     alert['status.next_check'] = 0
+        # else:
+        #     next_check = (every - (now-last_check))
+        #     alert['status.next_check'] = next_check.total_seconds()
+        #     log.info("      next check in %s", next_check)
 
         return alert
 
