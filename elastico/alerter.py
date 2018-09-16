@@ -682,8 +682,10 @@ class Alerter:
             if status != 'ok' and last_rule:
                 realert = alert_data.get('realert', {'minutes': 60})
 
-                if realert == 'never':
-                    alert_data['status.realert'] = 'never'
+                if realert['enabled'] is False:
+                    if 'status.realert' in alert_data:
+                        alert_data['status.realert'] = -1
+
                     return alert_data
                 # else it is assumed, that realert is a dictionary, which can
                 # be passed to timedelta
@@ -713,6 +715,7 @@ class Alerter:
                 else:
                     if alert_data['status.previous'] != 'ok':
                         alert_data['status.current'] = 'realert'
+                    alert_data['status.realert'] = 0
                     log.warning("      trigger alert -> %s", alert_data['status.current'])
 
         return alert_data
@@ -859,6 +862,8 @@ class Alerter:
         if self.es:
             self.refresh_status_storage_index()
 
+
+    ALIAS = re.compile(r"^\s*\*(\w+)(\.\w+)*(\s+\*(\w+)(\.\w+)*)*\s*$")
 
     def get_rule_datasets(self, rule):
         # create a product of all items in 'each' to multiply the rule
@@ -1132,264 +1137,6 @@ class Alerter:
         return alert_data
 
 
-    ALIAS = re.compile(r"^\s*\*(\w+)(\.\w+)*(\s+\*(\w+)(\.\w+)*)*\s*$")
-    def process_old(self, rule, action=None):
-        log = globals()['log']
-
-        now = self.now()
-        data_sets = self.get_rule_datasets(rule)
-
-        visited_keys = []
-
-        for data_set in data_sets:
-        #    self.compose_rule(rule, data_set)
-
-            log.debug("data_set: %s", data_set)
-
-            r = Config.object()
-
-            # # copy config's data section
-            # r.update(deepcopy(self.config.get('data', {})))
-            #
-            # # copy alerter's data section
-            # r.update(deepcopy(self.config.get('alerter.data', {})))
-
-            # copy arguments
-            r.update(deepcopy(self.config.get('arguments', {})))
-
-            # for k,v in self.config.items():
-            #     if k.endswith('_defaults'): continue
-            #     if k in ('arguments', 'alerter', 'digester'): continue
-            #     r[k] = deepcopy(v)
-
-            # get defaults
-            defaults = self.config.get('alerter.rule_defaults', {})
-            _class = rule.get('class', 'default')
-
-            log.debug("rule class: %s", _class)
-            _defaults = defaults.get(_class, {})
-
-            log.debug("rule defaults: %s", _defaults)
-            r.update(deepcopy(_defaults))
-
-            # update data from rule
-            r.update(deepcopy(rule))
-
-            for data in data_set:
-                r.update(deepcopy(data))
-
-            _name = r.getval('name')
-            _key = self.assert_key(r, _name)
-            _disabled = self.config.get('alerter.disabled', [])
-            log.warning('key=%r disabled=%r', _key, _disabled)
-            if _key in _disabled:
-                log.warning('msg="rule %s disabled => skipping" key=%r', _name, _key)
-                # TODO: maybe put also skipped rules as "skipped" into index
-                continue
-
-            # overrides from arguments
-            #r.update(self.config.get('alerter.rule.%s', {}))
-
-            logger_name = r.getval('logger', 'elastico.alerter.%s' % _key)
-            log = logging.getLogger(logger_name)
-
-            log.info("rule=%r logger=%r", _name, logger_name)
-
-            _alerts = get_alerts(r.get('alerts', []), context=r)
-
-            collected_alerts = []
-
-            for alert in _alerts:
-                log.debug("process alert %s", alert)
-                alert_data = Config.object()
-
-                assert 'type' in alert
-
-                _type = alert_data.format(alert['type'])
-
-                defaults = self.config.get('alerter.alert_defaults', {})
-                alert_data.update(deepcopy(defaults.get(_type,{})))
-
-                defaults = r.get('alert_defaults', {})
-                alert_data.update(deepcopy(defaults.get(_type,{})))
-
-                alert_data.update(r)
-
-                alert_data.update(alert)
-                alert_data = alert_data.format()
-
-                if 'alerts' in alert_data:
-                    del alert_data['alerts']
-
-                log.debug("alert_data (alert): %s", alert_data)
-
-                _r_name = r.getval('name')
-                _key = self.assert_key(alert_data, _r_name)
-
-                log.info("alert? -- key=%r, type=%r", _key, _type)
-
-                visit_key = (_type, _key)
-                assert visit_key not in visited_keys, \
-                    "key %s already used in rule %s" % (_key, _r_name)
-
-                assert 'match' in alert_data or 'no_match' in alert_data \
-                    or 'command_succeeds' in alert_data \
-                    or 'command_fails' in alert_data, \
-                    "rule %s does not have a check defined" % _r_name
-
-                log.debug("alert_data: %s", alert_data)
-
-                # check only every now and then. default 2min
-                every = timedelta(**alert_data.get('every', {'minutes': 1}))
-                #log.debug("LAST_CHECK=%r", Alerter.LAST_CHECK)
-                last_check = Alerter.LAST_CHECK.get(visit_key, now - every - timedelta(seconds=1))
-                log.debug("last_check=%s, now=%s, every=%s", last_check, now, every)
-
-                if (now - every) >= last_check:
-                    # if action:
-                    #     action(Config(alert_data))
-                    # else:
-                    collected_alerts.append(self.check_alert(alert_data))
-                    Alerter.LAST_CHECK[visit_key] = now
-                else:
-                    log.info("      next check in %s", every - (now-last_check))
-
-            if 1:
-                # helper function to always return a list
-                def _get_list(D,n):
-
-                    l = D.get(n, [])
-                    if not isinstance(l, list):
-                        l = [l]
-                    return l
-
-                log.debug("rule: %r", r)
-
-                self.assert_key(r)
-
-                # get rule status
-                rule_status = self.read_status(type='rule', key=r.getval('key'))
-
-                if rule_status is None:
-                    rule_status = {}
-
-                rule_status['key'] = r.getval('key')
-                rule_status['type'] = 'rule'
-                rule_status['name'] = r.getval('name')
-
-                alerts = collected_alerts
-                log.debug("alert count=%s", len(alerts))
-
-                #
-                was_ok = all([ a['status.previous'] == 'ok' for a in alerts ])
-                now_ok = all([ a['status.current'] == 'ok' for a in alerts ])
-                was_alert = lambda a: a['status.previous'] != 'ok'
-                was_alert = [ x for x in filter(was_alert, alerts)]
-                log.debug("was_ok=%r now_ok=%r was_alert=%r", was_ok, now_ok, was_alert)
-
-
-                #now_ok = max([ a.get('severity, )['status.current'] == 'ok' for a in alerts ])
-                # update rule status
-                if was_ok and not now_ok:
-                    rule_status['status.start'] = dt_isoformat(now)
-
-                    # all related alerts and records will get this id
-                    rule_status['status.id'] = '{}_{}'.format(
-                        rule_status['key'], rule_status['status.start'])
-
-
-                # notify
-                if was_ok:
-                    notify = []
-                else:
-                    notify = _get_list(rule_status, 'trigger')
-
-                notify_lists = [_get_list(a, 'trigger') for a in was_alert]
-                notify = list(set(chain(notify, *notify_lists)))
-                rule_status['trigger'] = notify
-
-                # alerts
-                if was_ok:
-                    al_list = []
-                else:
-                    al_list = _get_list(rule_status, 'alerts')
-                rule_status['alerts'] = list(set(chain( al_list,
-                    [ a['type'] for a in was_alert ]
-                )))
-
-                if was_alert and now_ok:
-                    rule_status['status.end'] = dt_isoformat(now)
-
-                    all_clear = Config.object()
-                    all_clear.update(r)
-                    all_clear['type'] = 'all-clear'
-                    all_clear['status.current'] = 'ok'
-                    all_clear['trigger'] = rule_status['trigger']
-                    self.assert_key(all_clear)
-                    all_clear.update(r.get('all_clear', {}))
-                    log.info("all_clear=%r", all_clear)
-                    #log.info("all_clear=%r", all_clear)
-                    self.do_alert(all_clear)
-
-                    for alert in alerts:
-                        #alert['status'] = rule_status
-                        alert['status'] = rule_status.get('status', {})
-                        # if 'status.start' in rule_status:
-                        #     alert['status.start'] = rule_status['status.start']
-                        #     alert['status.id']    = rule_status['status.id']
-                        #
-                        # if 'status.end' in rule_status:
-                        #     alert['status.end']   = rule_status['status.end']
-
-                        if not rule.get('dry_run'):
-                            self.write_status(alert)
-                else:
-                    log.debug("iter alerts")
-                    for alert in alerts:
-                        # if 'status.start' in rule_status:
-                        #     alert['status.start'] = rule_status['status.start']
-                        #     alert['status.id']    = rule_status['status.id']
-                        alert['status'] = rule_status.get('status', {})
-
-                        log.debug("alert=%r", alert)
-                        if action:
-                            action(alert)
-                        else:
-                            status_current = alert['status.current']
-                            status_realert = alert.get('status.realert')
-
-                            if status_current != 'ok' and not status_realert:
-                                self.do_alert(alert)
-
-                            if not rule.get('dry_run'):
-                                self.write_status(alert)
-
-                    # send all clear to all notifications in rule_status
-
-
-                if not r.get('dry_run'):
-                    self.write_status(rule_status)
-                        #doc_type='elastico_rule_status')
-
-                # finally write status
-
-
-#
-#            all_clear = True
-#            for alert in collected_alerts:
-#               if alert['status.current'] == 'ok':
-#               elif 'realert' not in alert['status']:
-#                  self.do_alert(alert)
-#               all_clear = all_clear and alert['status.current'] == 'ok'
-#
-#            raise all clear only if all alerts are gone
-#
-
-        # if not alert_data.get('dry_run'):
-        #     self.write_status(alert_data)
-
-            if not _alerts and action:
-                action(rule)
 
     def init_all_clear(self, rule, notify):
         all_clear = Config.object()
