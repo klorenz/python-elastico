@@ -261,6 +261,7 @@ class Alerter:
         return data.get('key')
 
     def notify_alert(self, alert_data, all_clear=False):
+        log.debug("notify_alert -- alert_data=%r", alert_data)
         notifier = Notifier(self.config, alert_data, prefixes=['alerter'])
 
         # set future status
@@ -459,7 +460,7 @@ class Alerter:
         cmd = data.format(trigger.get('command'), trigger)
         (result, stdout, stderr) = self.do_some_command(cmd, trigger)
         data['alert_trigger'] = result != 0
-        return alert_trigger
+        return result
 
     def check_require(self, items, default, invert, data):
         _result = default
@@ -1120,8 +1121,8 @@ class Alerter:
             "key %(key)r already used in rule %(name)r" % alert_data
 
         assert 'match' in alert_data or 'no_match' in alert_data \
-            or 'command_succeeds' in alert_data \
-            or 'command_fails' in alert_data, \
+            or 'command' in alert_data \
+            or 'check' in alert_data, \
             "rule %(name)r does not have a check defined" % alert_data
 
         # assert 'severity' in alert_data, \

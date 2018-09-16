@@ -217,6 +217,7 @@ class Notifier(BaseNotifier):
             notify_specs.update(self.config.get('%s.actions' % prefix, {}))
 
         notify_specs.update(data.get('actions',{}))
+        log.debug("notify_specs=%r", notify_specs)
 
         # normalize notify data
         if isinstance(notify, dict):
@@ -268,6 +269,7 @@ class Notifier(BaseNotifier):
                 notify_spec['message.subject'] = subject
                 notify_spec['message.text'] = text
 
+                log.debug("notify_spec: %r", notify_spec)
                 self.transport_notification(message, notify_spec, data.format())
 
                 if self.config.get('dry_run'):
@@ -305,5 +307,5 @@ class Notifier(BaseNotifier):
 
             log.info("      notification %s -> %s", notify_name, notify_spec['status'])
 
-            self.update_data('actions', notifications)
+            self.update_data('triggered', notifications)
 

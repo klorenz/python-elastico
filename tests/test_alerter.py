@@ -589,9 +589,10 @@ condition_data = dict(
         input = {'if-before': '14:00:00'},
         expect = None),
 
-    if_before_mins_ok = dict(
-        input = {'if-before': '49:00'},
-        expect = None),
+    # datetutil.parser.parse does not support this
+    # if_before_mins_ok = dict(
+    #     input = {'if-before': '49:00'},
+    #     expect = None),
 
     if_before_hours_fails = dict(
         input = {'if-before': '13:00:00'},
@@ -601,9 +602,10 @@ condition_data = dict(
         input = {'if-after': '14:00:00'},
         expect = False),
 
-    if_after_mins_fails = dict(
-        input = {'if-after': '49:00'},
-        expect = False),
+    # datetutil.parser.parse does not support this
+    # if_after_mins_fails = dict(
+    #     input = {'if-after': '49:00'},
+    #     expect = False),
 
     if_after_hours_ok = dict(
         input = {'if-after': '13:00:00'},
@@ -868,7 +870,7 @@ def test_alerter_match():
                 }
             }
         })
-        
+
         print("=== check 3 ===")
         log.debug("=== check 3 ===")
 
@@ -975,7 +977,7 @@ def test_alerter_email(monkeypatch):
                 hummhomm:
                     actions:
                         notify-treebeard:
-                          transport: email
+                          type: email
                           email:
                             to: 'treebeard@middle.earth'
 
@@ -1059,6 +1061,11 @@ def test_alerter_email(monkeypatch):
 
             ---------
 
+                actions:
+                  notify-treebeard:
+                    email:
+                      to: 'treebeard@middle.earth'
+                    type: email
                 alert_trigger: true
                 at: 2018-05-05T10:07:00Z
                 key: test
@@ -1070,14 +1077,6 @@ def test_alerter_email(monkeypatch):
                   text: |
                     humm homm
                 name: test
-                trigger:
-                  - notify-treebeard
-                actions:
-                  notify-treebeard:
-                    email:
-                      to: 'treebeard@middle.earth'
-                    action: treebeard
-                    type: email
                 status:
                   current: alert
                   id: test_2018-05-05T10:07:00Z
@@ -1085,6 +1084,8 @@ def test_alerter_email(monkeypatch):
                   previous: ok
                   severity: 1
                   start: 2018-05-05T10:07:00Z
+                trigger:
+                  - notify-treebeard
                 type: hummhomm
 
 
@@ -1095,7 +1096,12 @@ def test_alerter_email(monkeypatch):
 
             <p>humm homm</p>
             <hr />
-            <pre><code>alert_trigger: true
+            <pre><code>actions:
+              notify-treebeard:
+                email:
+                  to: 'treebeard@middle.earth'
+                type: email
+            alert_trigger: true
             at: 2018-05-05T10:07:00Z
             key: test
             match: x
@@ -1106,14 +1112,6 @@ def test_alerter_email(monkeypatch):
               text: |
                 humm homm
             name: test
-            trigger:
-              - notify-treebeard
-            actions:
-              notify-treebeard:
-                email:
-                  to: 'treebeard@middle.earth'
-                action: treebeard
-                type: email
             status:
               current: alert
               id: test_2018-05-05T10:07:00Z
@@ -1121,6 +1119,8 @@ def test_alerter_email(monkeypatch):
               previous: ok
               severity: 1
               start: 2018-05-05T10:07:00Z
+            trigger:
+              - notify-treebeard
             type: hummhomm
             </code></pre>
             --===============11111==--
@@ -1136,21 +1136,21 @@ def test_alerter_command():
 
     alerter = Alerter(config=Config.object("""
         alerter:
-            notifications:
+            actions:
                 sound:
-                    transport: command
+                    type: command
                     command: "echo 'humm'"
                     stdout: true
 
             alert_defaults:
                 hummhomm1:
-                    notify:
+                    trigger:
                       - sound
                 hummhomm2:
-                    notify:
+                    trigger:
                       - sound
                 hummhomm3:
-                    notify:
+                    trigger:
                       - sound
 
             rules:
@@ -1178,7 +1178,7 @@ def test_alerter_command():
         'hummhomm1': { 'test': { '@timestamp': '2018-05-05T10:07:00Z',
                            'alert_trigger': False,
                            'at': '2018-05-05T10:07:00Z',
-                           'command_succeeds': 'bash -c "exit 0"\n',
+                           'command': 'exit 0\n',
                            'key': 'test',
                            'name': 'test',
                            'trigger': ['sound'],
@@ -1194,11 +1194,11 @@ def test_alerter_command():
   'hummhomm2': { 'test': { '@timestamp': '2018-05-05T10:07:00Z',
                            'alert_trigger': False,
                            'at': '2018-05-05T10:07:00Z',
-                           'command_fails': 'bash -c "exit 1"\n',
+                           'command': '(echo "this fails" && exit 1) || exit 0\n',
                            'key': 'test',
                            'name': 'test',
                            'trigger': ['sound'],
-                           'result': {'exit_code': 1},
+                           'result': {'exit_code': 0},
                            'status': {'current': 'ok',
                                             'id': 'test_2018-05-05T10:07:00Z',
                                     'next_check': 0,
@@ -1209,10 +1209,10 @@ def test_alerter_command():
   'hummhomm3': { 'test': { '@timestamp': '2018-05-05T10:07:00Z',
                            'alert_trigger': True,
                            'at': '2018-05-05T10:07:00Z',
-                           'command_succeeds': 'bash -c "exit 1"\n',
+                           'command': 'exit 1\n',
                            'key': 'test',
                            'name': 'test',
-                           'notifications': { 'sound': { 'command': 'echo '
+                           'triggered': { 'sound': { 'command': 'echo '
                                                                     "'humm'",
                                                          'message': { 'subject': '[elastico] '
                                                                                  'ALERT '
@@ -1220,12 +1220,12 @@ def test_alerter_command():
                                                                                  'hummhomm3 '
                                                                                  'test',
                                                                       'text': ''},
-                                                         'notification': 'sound',
+                                                         'action': 'sound',
                                                          'result': { 'exit_code': 0,
                                                                      'stdout': b'humm'},
                                                          'status': 'ok',
                                                          'stdout': True,
-                                                         'transport': 'command'}},
+                                                         'type': 'command'}},
                            'trigger': ['sound'],
  'result': {'exit_code': 1},
                            'status': {'current': 'alert',
@@ -1297,7 +1297,7 @@ def test_do_alert(monkeypatch):
     assert alert_data == {
         'key': 'the_key',
         'name': 'the_name',
-        'notifications': {
+        'triggered': {
             'an-email': {
                 'email': {
                     'from': 'noreply',
