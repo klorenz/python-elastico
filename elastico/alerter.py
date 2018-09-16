@@ -174,7 +174,7 @@ class Alerter:
 #     "@timestamp": "desc"
 #   },
 #   "size": 1
-# }
+
 #     #
 
 # Get all entries at latest run
@@ -196,7 +196,9 @@ class Alerter:
         if type is None:
             type = rule.get('type')
 
-        log.debug("read_status storage_type=%r, key=%r, type=%s", storage_type, key, type)
+        log_key = "func='read_status' key=%r type=%r" % (key, type)
+
+        log.debug("%s storage_type=%r", log_key, storage_type)
 
         # return cached status
         result = Alerter.STATUS.get(type, {}).get(key)
@@ -353,32 +355,41 @@ class Alerter:
 
 
     def check_match(self, trigger, rule):
-        log.debug('check_match trigger=%r rule=%r', trigger, rule)
+        log_key = "func='check_match' key=%(key)r type=%(type)r" % rule
+
+        log.debug('%s trigger=%r rule=%r', log_key, trigger, rule)
         _rule = deepcopy(rule)
         _rule.update(trigger)
         _rule = Config(_rule)
 
-        body = self.get_query(_rule, 'match')
-        log.debug("query body: %r", body)
+        query_body = self.get_query(_rule, 'match')
+        log.debug("%s query_body=%r", log_key, query_body)
+
         index = rule.get('index')
-        body['size'] = 1
+        query_body['size'] = 1
 
         assert index, "index must be present in rule %s" % rule.getval('name')
-        trigger['match_query'] = body
+        trigger['match_query'] = query_body
 
         key = rule.getval('key')
         type = rule.getval('type')
 
-        if self.es:
+        #test_data = self.config.get('alerter.test-data.{}.{}.match'.format(key,type))
+        test_data = None
+        if test_data:
+            results = test_data
+        elif self.es:
             self._refresh_index(index)
-            results = self.es.search(index=index, body=body)
-            log.debug("results: %s", results)
-            trigger['match_hits_total'] = results['hits']['total']
-            if trigger['match_hits_total']:
-                trigger['match_hit'] = Config.object(results['hits']['hits'][0])
+            results = self.es.search(index=index, body=query_body)
+            log.debug("%s results=%r", log_key, results)
         else:
-            trigger['match_hits_total'] = 0
             results = {'hits': {'total': 0}}
+
+        trigger['match_hits_total'] = results['hits']['total']
+        if trigger['match_hits_total']:
+            trigger['match_hit'] = Config.object(results['hits']['hits'][0])
+
+        log.debug("%s match_hits_total=%r", log_key, trigger['match_hits_total'])
 
         # there should be at least min_matches
         min_total = trigger.get('matches_min')
@@ -400,9 +411,9 @@ class Alerter:
         elif max_total is not None:
             _result = _result or results['hits']['total'] <= max_total
 
-        log.info("match -- key=%r type=%r hits=%r min=%r max=%r trigger=%r "
+        log.info("%s msg='match' hits=%r min=%r max=%r alert_trigger=%r "
             "index=%r match_query=%s",
-            key, type, results['hits']['total'], min_total, max_total, _result,
+            log_key, results['hits']['total'], min_total, max_total, _result,
             index, json.dumps(rule['match_query']))
 
         trigger['alert_trigger'] = _result
@@ -458,6 +469,7 @@ class Alerter:
 
     def check_command(self, trigger, data):
         cmd = data.format(trigger.get('command'), trigger)
+        #test_data = self.config.get('alerter.test-data.{}.{}.commandI#'.format(key,type))
         (result, stdout, stderr) = self.do_some_command(cmd, trigger)
         data['alert_trigger'] = result != 0
         return result
@@ -479,8 +491,11 @@ class Alerter:
 
     def perform_check(self, trigger, alert_data):
         need_alert = self.check_conditions(alert_data)
+        log_key = "func='perform_check' key=%(key)r type=%(type)r" % alert_data
 
-        log.debug("trigger=%r alert_data=%r", trigger, alert_data)
+        log.debug("%s need_alert=%r", log_key, need_alert)
+
+        log.debug("%s trigger=%r alert_data=%r", log_key, trigger, alert_data)
 
         if need_alert is not None:
             #trigger['alert_precondition']
@@ -544,54 +559,73 @@ class Alerter:
             if not if_list:
                 return None
 
-            log.debug("check name=%r default=%r result=%r check_ok=%r", name, default, result, check_ok)
+            log_key = "func='_check_if' key=%r type=%r name=%r" % (
+                alert_data.get('key'), alert_data.get('type'), name)
+
+            log.debug("%s default=%r result=%r check_ok=%r",
+                log_key, default, result, check_ok)
+
             _condition_met = default
             for condition in if_list:
-                log.debug("check name=%r condition=%r, check_ok=%r", name, condition, check_ok)
+                log.debug("%s condition=%r, check_ok=%r", log_key, condition, check_ok)
                 if '.' in condition:
                     _r_key, _a_type = condition.rsplit('.', 1)
+
                     _status = self.read_status(key=_r_key, type=_a_type)
-                    log.debug("check name=%r condition=%r check_ok=%r status=%r", name, condition, check_ok, _status['status']['current'])
+                    log.debug("%s condition=%r check_ok=%r status_current=%r",
+                        log_key, condition, check_ok,
+                        _status['status']['current'])
+
                     if check_ok:
                         if _status['status']['current'] == 'ok':
                             _condition_met = result
-                            log.debug("check status='ok' result=%r", result)
+                            log.debug("%s status='ok' result=%r", log_key, result)
                             break
                         else:
-                            log.debug("check status='alert'")
+                            log.debug("%s status='alert'", log_key)
                     else:
                         if _status['status']['current'] != 'ok':
                             _condition_met = result
-                            log.debug("check status='alert' result=%r", result)
+                            log.debug("%s status='alert' result=%r", log_key, result)
                             break
                         else:
-                            log.debug("check status='ok'")
+                            log.debug("%s status='ok'", log_key)
                 else:
                     # a rule is in alert if there is any alert active
                     _status = self.read_status(key=condition, type='rule')
-                    log.debug("check name=%r condition=%r check_ok=%r alerts=%r", name, condition, check_ok, _status['alerts'])
+                    log.debug("%s condition=%r check_ok=%r alerts=%r",
+                        log_key, condition, check_ok, _status['alerts'])
+
                     if check_ok:
                         if len(_status['alerts']) == 0:
                             _condition_met = result
-                            log.debug("check alerts=[] result=%r", result)
+                            log.debug("%s alerts=[] result=%r", log_key, result)
                             break
                         else:
-                            log.debug("check alerts=%r result=%r", _status['alerts'], result)
+                            log.debug("%s alerts=%r result=%r",
+                                log_key, _status['alerts'], result)
                     else:
                         if len(_status['alerts']) > 0:
                             _condition_met = result
-                            log.debug("check alerts=%r result=%r", _status['alerts'], result)
+                            log.debug("%s alerts=%r result=%r", log_key,
+                                _status['alerts'], result)
                             break
                         else:
-                            log.debug("check alerts=[]")
+                            log.debug("%s alerts=[]", log_key)
 
-            log.debug("_condition_met=%r", _condition_met)
+            log.debug("%s _condition_met=%r", log_key, _condition_met)
 
             if _condition_met is True:
-                return None
+                result = None
             else:
                 alert_data['alert_condition_fails'] = name
-                return False
+                result = False
+
+            log.info("%s result=%r", log_key, result)
+            return result
+
+        log_key = "func='check_conditions' key=%r "\
+                  "type=%r" % (alert_data.get('key'), alert_data.get('type'))
 
         if need_alert is None:
             # check if all are True => if one is ok, result is False
@@ -601,7 +635,6 @@ class Alerter:
                 # if all are in alert, condition is met
                 default=True, check_ok=True, result=False
             )
-            log.info("if-all: need_alert=%s", need_alert)
 
         if need_alert is None:
             # check if at least one is true
@@ -612,7 +645,6 @@ class Alerter:
                 # at last one is in alert mode
                 default=False, check_ok=False, result=True
             )
-            log.info("if-any: need_alert=%s", need_alert)
 
         if need_alert is None:
             # if-none is met, if all statuses are "ok"
@@ -621,7 +653,6 @@ class Alerter:
                 name='if-none',
                 default=True, check_ok=False, result=False
             )
-            log.info("if-none: need_alert=%s", need_alert)
 
         if need_alert is None:
             now = self.now()
@@ -635,7 +666,7 @@ class Alerter:
                 if now < after:
                     need_alert = False
 
-        log.info("check_conditions: need_alert=%s", need_alert)
+        log.info("%s need_alert=%s", log_key, need_alert)
 
         return need_alert
 
@@ -644,12 +675,11 @@ class Alerter:
         if not isinstance(alert_data, Config):
             alert_data = Config(alert_data)
 
-        _key = alert_data.get('key')
+        _key  = alert_data.getval('key')
+        _type = alert_data.getval('type')
 
-        logger_name = alert_data.getval('logger', 'elastico.alerter.%s' % _key)
-        log = logging.getLogger(logger_name)
-
-        log.debug("check_alert")
+        log_key = "func='read_status' key=%r type=%r" % (_key, _type)
+        log.debug("%s", log_key)
 
         if status is None:
             # get last status of this alert_data
@@ -660,7 +690,7 @@ class Alerter:
                     status = last_rule['status']
                 else:
                     status = last_rule['status']['current']
-            log.debug("current_status=%r", last_rule)
+            log.debug("%s current_status=%r", log_key, last_rule)
 
         if status is None:
             alert_data['status.previous'] = 'ok'
@@ -671,13 +701,18 @@ class Alerter:
 
         need_alert = self.perform_check(alert_data, alert_data)
 
-        log.debug("checks performed -- name=%r, status=%r, need_alert=%r, alert_data=%r", alert_data.getval('name'), status, need_alert, alert_data)
+        log.debug("%s msg='checks performed' name=%r status=%r need_alert=%r "
+            "alert_data=%r", log_key, alert_data.getval('name'), status,
+            need_alert, alert_data)
+
         if not need_alert:
             alert_data['status.current'] = 'ok'
         else:
             alert_data['status.current'] = 'alert'
 
-            log.warning("need alert -- name=%r, status=%r", alert_data.getval('name'), status)
+            log.warning("%s msg='need alert' name=%r status=%r", log_key,
+                alert_data.getval('name'), status)
+
             # new status = alert
             if status != 'ok' and last_rule:
                 realert = alert_data.get('realert', {'minutes': 60})
@@ -700,23 +735,26 @@ class Alerter:
 
                 time_passed = now - to_dt(last_rule['@timestamp'])
 
-                log.info("delta=%r time_passed=%r", delta, time_passed)
+                log.info("%s delta=%r time_passed=%r", log_key, delta, time_passed)
 
                 # if there is still wait time left,
                 if delta > time_passed:
                     wait_time = delta - time_passed
-                    log.info("wait_time=%r", wait_time)
+                    log.info("%s wait_time=%r", log_key, wait_time)
 
-                    #alert_data['status.realert'] = 'wait'
-                    alert_data['status.realert'] = wait_time.total_seconds()
-                    log.warning("      trigger alert -> wait for realert (%s)", wait_time)
+                    wait_time_s = wait_time.total_seconds()
+                    alert_data['status.realert'] = wait_time_s
+                    log.info("%s status_realert=%r", log_key, wait_time_s)
+
                     return alert_data
 
                 else:
                     if alert_data['status.previous'] != 'ok':
                         alert_data['status.current'] = 'realert'
                     alert_data['status.realert'] = 0
-                    log.warning("      trigger alert -> %s", alert_data['status.current'])
+
+                    log.warning("%s status_current=%r msg='trigger alert'",
+                        log_key, alert_data['status.current'])
 
         return alert_data
 
@@ -731,7 +769,11 @@ class Alerter:
             yield (rule, alerts)
 
     def alert_init_status(self, alert):
-        log.debug("alert_init_status: %s", alert.__class__.__name__)
+        log_key = "func='alert_init_status' key=%(key)r type=%(type)r" % alert
+
+        log.debug("%s msg='class(alert) is %s'", log_key,
+            alert.__class__.__name__)
+
         alert_status = Config(self.read_status(alert))
 
         now = self.now()
@@ -741,18 +783,21 @@ class Alerter:
         if alert_status:
             #last_check = self.now()
             last_check = to_dt(alert_status['@timestamp'])
-            log.debug("alert_status=%r", alert_status)
+            log.debug("%s alert_status=%r", log_key, alert_status)
             alert['status.previous'] = alert_status['status.current']
             alert['status.current'] = alert_status['status.current']
         else:
             last_check = None
             alert['status.current'] = alert['status.previous'] = 'ok'
 
-        log.debug("last_check=%r", last_check)
+        log.debug("%s last_check=%r", log_key, last_check)
 
-        next_check = alert.get('status.next_check',0)
+        next_check = timedelta(seconds=alert_status.get('status.next_check',0))
+        next_check_s = next_check.total_seconds()
 
-        if next_check > 0:
+        log.debug("%s next_check=%r", log_key, next_check)
+
+        if next_check_s > 0:
             next_check = (next_check - (now-last_check))
         elif last_check is None:
             next_check = timedelta(seconds=0)
@@ -760,21 +805,19 @@ class Alerter:
             next_check = (every - (now-last_check))
 
         next_check_s = next_check.total_seconds()
+        log.debug("%s next_check_s=%r", log_key, next_check_s)
 
         alert['status.next_check'] = next_check_s > 0 and next_check_s or 0
-        log.info("      next check in %s", next_check)
 
-        # # do next check, if needed
-        # if last_check is None or (now - every) >= last_check:
-        #     alert['status.next_check'] = 0
-        # else:
-        #     next_check = (every - (now-last_check))
-        #     alert['status.next_check'] = next_check.total_seconds()
-        #     log.info("      next check in %s", next_check)
+        log.info("%s every=%r last_check=%r now=%r next_check=%r", log_key, every, last_check, now, alert['status.next_check'])
 
         return alert
 
     def rule_init_status(self, rule):
+        key = rule.getval('key')
+        log_key = "func='alert_init_status' key=%r" % key
+        log.debug("%s", log_key)
+
         rule_status = self.read_status(type='rule', key=rule['key'])
         if rule_status is None:
             rule_status = {}
@@ -787,20 +830,26 @@ class Alerter:
 
     def check_alerts(self):
         self._refreshed = {}
-        log.debug("check_alerts")
+
+        log.debug("func='check_alerts'")
 
         rules = self.config.get('alerter.rules', [])
         now = self.now()
 
         for rule, alerts in self.iterate_alerts():
+            key = rule.getval('key')
+            log_key = "func='check_alerts' key=%r" % key
+            log.debug("%s", log_key)
 
             for alert in alerts:
                 self.alert_init_status(alert)
+                type = alert.getval('type')
+
+                log.debug("%s type=%r status_next_check=%r",
+                    log_key, type, alert['status.next_check'])
 
                 if alert['status.next_check'] == 0: # no wait time, so now
                     self.check_alert(alert)
-                else:
-                    log.debug("next check: %s", alert['status.next_check'])
 
             rule_status = self.rule_init_status(rule)
 
@@ -810,7 +859,8 @@ class Alerter:
             was_alert = [ x for x in filter(was_alert, alerts)]
             now_alert = not now_ok
 
-            log.debug("was_ok=%r now_ok=%r was_alert=%r", was_ok, now_ok, was_alert)
+            log.debug("%s was_ok=%r now_ok=%r was_alert=%r",
+                log_key, was_ok, now_ok, was_alert)
 
             if was_ok and not now_ok:
                 rule_status['status.start'] = dt_isoformat(now)
