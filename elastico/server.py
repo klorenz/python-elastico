@@ -74,7 +74,8 @@ class Server:
                 check_errors_max = errors_max is not None and errors_max > -1
 
                 notifier = Notifier(self.config, prefixes=[self.prefix])
-                alerts = get_alerts(self.get_value('serve.alerts', []), context=self.config)
+                alerts = self.config.getval('serve.alerts', {})
+
                 for alert in alerts:
                     if error_count >= alert.get('error_count', 1):
                         notify = alert.get('notify', [])
