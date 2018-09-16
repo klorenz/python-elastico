@@ -1252,9 +1252,9 @@ def test_do_alert(monkeypatch):
     alerter = Alerter(config=Config.object({
         'dry_run': True,
         'alerter':{
-            'notifications': {
+            'actions': {
                 'an-email': {
-                    'transport': 'email',
+                    'type': 'email',
                     'email': {
                         'to': 'a@b.c',
                     }
@@ -1308,9 +1308,9 @@ def test_do_alert(monkeypatch):
                     'subject': '[elastico] ALERT - '
                                 'the_type the_name',
                     'text': ''},
-                 'notification': 'an-email',
+                 'action': 'an-email',
                  'status': 'dry_run',
-                 'transport': 'email'}},
+                 'type': 'email'}},
  'trigger': ['an-email'],
  'status': {'current': 'alert'},
  'type': 'the_type'}
