@@ -682,7 +682,7 @@ class Alerter:
             if status != 'ok' and last_rule:
                 realert = alert_data.get('realert', {'minutes': 60})
 
-                if realert['enabled'] is False:
+                if realert.get('enabled') is False:
                     if 'status.realert' in alert_data:
                         alert_data['status.realert'] = -1
 
