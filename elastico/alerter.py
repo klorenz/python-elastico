@@ -727,10 +727,13 @@ class Alerter:
 
                 # calculate wait time till next re-alert
                 now = self.now()
+                delta = 0
                 try:
                     delta = timedelta(seconds=int(last_rule['status']['realert']))
                 except Exception as e:
                     log.error("error", exc_info=1)
+
+                if not delta:
                     delta = timedelta(**realert)
 
                 time_passed = now - to_dt(last_rule['@timestamp'])
