@@ -1,5 +1,5 @@
 from elastico.util import (to_dt, dt_isoformat, read_config_dir,
-    get_config_value, format_value)
+    get_config_value, format_value, start_of_day, end_of_day)
 from textwrap import dedent
 
 def test_dt_isoformat():
@@ -8,6 +8,15 @@ def test_dt_isoformat():
     assert dt_isoformat(dt, ' ', 'minutes')  == '2018-01-01 01:01Z'
     assert dt_isoformat(dt, ' ', 'hours')  == '2018-01-01 01Z'
 
+def test_start_of_day():
+    dt = to_dt('2018-01-01T01:01:01Z')
+    start = start_of_day(dt)
+    assert dt_isoformat(start, ' ', 'seconds') == '2018-01-01 00:00:00Z'
+
+def test_end_of_day():
+    dt = to_dt('2018-01-01T01:01:01Z')
+    end = end_of_day(dt)
+    assert dt_isoformat(end, ' ', 'seconds') == '2018-01-01 23:59:59Z'
 
 def test_read_config_dir(tmpdir):
     tmpdir.join("f1.yml").write(dedent("""

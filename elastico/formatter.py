@@ -1,6 +1,7 @@
 from string import Formatter
 import logging, json
 log = logging.getLogger('elastico.formatter')
+from .util import indent
 
 class ElasticoFormatter(Formatter):
 
@@ -13,11 +14,11 @@ class ElasticoFormatter(Formatter):
             result = ('{:'+format_spec[:-2]+'f}').format(value/1000000.0)
         elif format_spec.endswith('json'):
             try:
-                indent=int(format_spec[:-4])
+                ind=int(format_spec[:-4])
             except:
-                indent=None
+                ind=None
 
-            result = json.dumps(value, indent=indent)
+            result = json.dumps(value, indent=ind)
         elif format_spec.endswith('indent'):
             try:
                 first, rest = format_spec[:-6].split('.')
@@ -30,7 +31,7 @@ class ElasticoFormatter(Formatter):
                 except:
                     rest=''
 
-            result = indent(value, indent=rest)
+            result = indent(value, rest)
         else:
             result = super(ElasticoFormatter, self).format_field(value, format_spec)
 
@@ -38,12 +39,12 @@ class ElasticoFormatter(Formatter):
 
         return result
 
-    def convert_field(self, value, conversion):
-        if conversion == 'json':
-            result = json.dumps(value, indent=2)
-        else:
-            parent = super(ElasticoFormatter, self)
-            result = parent.convert_field(value, conversion)
-
-        return result
-
+    # def convert_field(self, value, conversion):
+    #     if conversion == 'json':
+    #         result = json.dumps(value, indent=2)
+    #     else:
+    #         parent = super(ElasticoFormatter, self)
+    #         result = parent.convert_field(value, conversion)
+    #
+    #     return result
+    # 

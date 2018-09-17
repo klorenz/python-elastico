@@ -12,6 +12,15 @@ else:
     string = basestring
     Exception = StandardError
 
+try:
+    from textwrap import indent
+except ImportError:
+    def indent(s, ind):
+        result = []
+        for line in s.splitlines(1):
+            result.append(ind+line)
+        return ''.join(result)
+
 import logging
 log = logging.getLogger('elastico.util')
 

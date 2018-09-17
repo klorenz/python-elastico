@@ -87,7 +87,7 @@ class Server:
                         notifier.notify(notify=notify, data=Config({
                             'message': {
                                 'subject': subject,
-                                'text': "error_count=%s\nargs=%r\n\n" % (error_count, args) +
+                                'text': "error_count=%s\nargs=%r\n\n" % (error_count, e.args) +
                                     traceback.format_exc()
                             }
                         }))

@@ -1,5 +1,8 @@
 import yaml, io, pyaml, re, pytest
-from textwrap import dedent, indent
+
+from textwrap import dedent
+from elastico.util import indent
+
 from elastico.util import PY3, to_dt, dt_isoformat
 from elastico.alerter import Alerter
 from elastico.config import Config
@@ -878,8 +881,6 @@ def test_alerter_match():
         at_s = "2018-05-05T10:20:00Z"
         alerter.config['arguments'] = {'at': at_s}
 
-
-
         alerter.check_alerts()
 
         pprint(Alerter.STATUS)
@@ -917,21 +918,18 @@ def test_alerter_match():
                         'id': 'value_check_2018-05-05T10:07:00Z',
                         'start': '2018-05-05T10:07:00Z',
                     },
-                    'all_clear': {'alerts': {'fatal': {'index': 'test-alerter-match',
-                                                             'match': 'value:[0 '
-                                                                      'TO 10]'},
-                                                   'warning': {'index': 'test-alerter-match',
-                                                               'match': 'value:[10 '
-                                                                        'TO '
-                                                                        '13]'}},
-                                        'at': '2018-05-05T10:20:00Z',
-                                        'key': 'value_check',
-                                        'message': 'all ok',
-                                        'name': 'value-check',
-                                        'trigger': [],
-                                        'status': {'current': 'ok'},
-                                        'timeframe': {'minutes': 5},
-                                        'type': 'all-clear'},
+                    'all_clear': {
+                        'key': 'value_check',
+                        'message': 'all ok',
+                        'trigger': [],
+                        'status': {
+                            'current': 'ok',
+                            'end': '2018-05-05T10:20:00Z',
+                            'id': 'value_check_2018-05-05T10:07:00Z',
+                            'severity': 0,
+                            'start': '2018-05-05T10:07:00Z'
+                        },
+                        'type': 'all-clear'},
                     'alerts': list(set(['fatal', 'warning'])),
                           'key': 'value_check',
                           'name': 'value-check',

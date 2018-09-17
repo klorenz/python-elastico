@@ -1225,6 +1225,7 @@ class Alerter:
         all_clear = Config.object()
         #all_clear.update(rule)
         all_clear['key'] = rule.getval('key')
+        all_clear['name'] = rule.getval('name')
         all_clear['type'] = 'all-clear'
         if status is not None:
             all_clear['status'] = deepcopy(status)
