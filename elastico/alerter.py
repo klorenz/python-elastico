@@ -915,11 +915,11 @@ class Alerter:
 
                 alert['status'].update(rule_status.get('status', {}))
 
-                if was_ok and now_alert:
+                if now_alert:
                     status_current = alert['status.current']
-                    status_realert = alert.get('status.realert')
+                    status_realert = alert.get('status.realert', 0)
 
-                    if status_current != 'ok' and not status_realert:
+                    if status_current != 'ok' and status_realert == 0:
                         self.do_alert(alert)
 
                 self.write_status(alert)
