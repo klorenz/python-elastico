@@ -258,7 +258,7 @@ class Alerter:
                 name = data['name']
 
         if 'key' not in data:
-            data['key'] = re.sub(r'[^\w]+', '_', name.lower())
+            data['key'] = re.sub(r'[^\w]+', '_', name.lower()).strip('_')
 
         return data.get('key')
 
@@ -786,6 +786,9 @@ class Alerter:
             log.debug("%s alert_status=%r", log_key, alert_status)
             alert['status.previous'] = alert_status['status.current']
             alert['status.current'] = alert_status['status.current']
+
+            if 'status.realert' in alert_status:
+                alert['status.realert'] = alert_status['status.realert']
         else:
             last_check = None
             alert['status.current'] = alert['status.previous'] = 'ok'
