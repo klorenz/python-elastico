@@ -1237,7 +1237,8 @@ class Alerter:
         _all_clear = rule.get('all_clear')
         if _all_clear:
             all_clear.update(_all_clear)
-            del all_clear['all_clear']
+            if 'all_clear' in all_clear:
+                del all_clear['all_clear']
 
         #log.info("all_clear=%r", all_clear)
         return all_clear
