@@ -498,8 +498,13 @@ class Alerter:
         log.debug("%s trigger=%r alert_data=%r", log_key, trigger, alert_data)
 
         if need_alert is not None:
+            alert_data['status.current'] = 'precondition'
+            alert_data['status.precondition'] = need_alert
             #trigger['alert_precondition']
             return need_alert
+        else:
+            if 'precondition' in alert_data['status']:
+                del alert_data['status.precondition']
 
         if 'check' in alert_data:
             return self.check(alert_data['check'], alert_data)
@@ -572,6 +577,9 @@ class Alerter:
                     _r_key, _a_type = condition.rsplit('.', 1)
 
                     _status = self.read_status(key=_r_key, type=_a_type)
+                    if not _status:
+                        continue
+
                     log.debug("%s condition=%r check_ok=%r status_current=%r",
                         log_key, condition, check_ok,
                         _status['status']['current'])
@@ -593,6 +601,9 @@ class Alerter:
                 else:
                     # a rule is in alert if there is any alert active
                     _status = self.read_status(key=condition, type='rule')
+                    if not _status:
+                        continue
+
                     log.debug("%s condition=%r check_ok=%r alerts=%r",
                         log_key, condition, check_ok, _status['alerts'])
 
