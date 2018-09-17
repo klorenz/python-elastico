@@ -1210,8 +1210,10 @@ class Alerter:
 
     def init_all_clear(self, rule, notify):
         all_clear = Config.object()
-        all_clear.update(rule)
+        #all_clear.update(rule)
+        all_clear['key'] = rule.getval('key')
         all_clear['type'] = 'all-clear'
+        all_clear['status'] = deepcopy(rule['status'])
         all_clear['status.current'] = 'ok'
         all_clear['trigger'] = notify
         self.assert_key(all_clear)
