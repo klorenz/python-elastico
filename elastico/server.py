@@ -76,9 +76,9 @@ class Server:
                 notifier = Notifier(self.config, prefixes=[self.prefix])
                 alerts = self.config.getval('serve.alerts', {})
 
-                for alert in alerts:
+                for type,alert in alerts.items():
                     if error_count >= alert.get('error_count', 1):
-                        notify = alert.get('notify', [])
+                        notify = alert.get('action', [])
                         subject = '[elastico] %s -- exception in server function' % alert.get('type', 'error')
 
                         if check_errors_max and error_count > errors_max:

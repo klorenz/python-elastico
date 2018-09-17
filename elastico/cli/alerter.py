@@ -78,6 +78,13 @@ def alerter_check(config):
 
     write_output(config, result)
 
+# need a command, where I simulate the data input for the checks, such that
+# you can check, if messages are created correctly
+
+# need a command to display dependency tree of alert rules and alerts
+
+#
+
 
 @alerter_command('show',
     arg('item', choices=('rules', 'alerts'), help="choose what to display"),

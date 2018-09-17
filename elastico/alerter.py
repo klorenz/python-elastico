@@ -908,7 +908,7 @@ class Alerter:
             if was_alert and now_ok:
                 # have to send all-clear for this rule
                 rule_status['status.end'] = dt_isoformat(now)
-                all_clear = self.init_all_clear(rule, rule_status['trigger'])
+                all_clear = self.init_all_clear(rule, rule_status['trigger'], rule_status['status'])
                 self.do_alert(all_clear)
                 rule_status['all_clear'] = all_clear
 
@@ -1203,17 +1203,20 @@ class Alerter:
         # assert 'severity' in alert_data, \
         #     "alert %(type)r in rule %(name)r has no severity defined" % alert_data
 
+        # TODO: if you use if-not conditions, make sure, that key/type is really existant
+
         log.debug("alert_data: %s", alert_data)
         return alert_data
 
 
 
-    def init_all_clear(self, rule, notify):
+    def init_all_clear(self, rule, notify, status=None):
         all_clear = Config.object()
         #all_clear.update(rule)
         all_clear['key'] = rule.getval('key')
         all_clear['type'] = 'all-clear'
-        all_clear['status'] = deepcopy(rule['status'])
+        if status is not None:
+            all_clear['status'] = deepcopy(status)
         all_clear['status.current'] = 'ok'
         all_clear['trigger'] = notify
         self.assert_key(all_clear)
