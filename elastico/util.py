@@ -287,5 +287,23 @@ def get_alerts(_alerts, context):
 def F(s):
     return s.format(**sys._getframe(1).f_locals)
 
-def slugify(s):
-    return re.sub(r'[^\w]+', '_', s.lower()).strip('_')
+def slugify(s, strip_=False, prefix_=None, suffix_=None):
+    log.debug("func='slugify' s=%r", s)
+    result = re.sub(r'[^\w]+', '_', s.lower())
+    if result == '_':
+        result = 'x'
+    if prefix_ is not None:
+        if result.startswith('_'):
+            result = prefix_+result
+    if suffix_ is not None:
+        if result.endswith('_'):
+            result = result+suffix_
+    if strip_:
+        result = result.strip('_')
+    # if result.endswith('_'):
+    #     result += 'x'
+    # if result.startswith('_'):
+    #     #result = 'x'+result
+    log.debug("func='slugify' result=%r", result)
+    return result
+

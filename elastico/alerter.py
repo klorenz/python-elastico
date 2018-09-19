@@ -188,13 +188,13 @@ class Alerter:
 #   }
 # }
 
-    def read_status(self, rule=None, key=None, type=None, filter=[]):
+    def read_status(self, rule={}, key=None, type=None, filter=[]):
         storage_type = self.config.get('alerter.status_storage', 'memory')
         doc_type = 'elastico_alert_status'
         if key is None:
             key  = rule.get('key')
         if type is None:
-            type = rule.get('type')
+            type = rule.get('type', 'rule')
 
         log_key = "func='read_status' key=%r type=%r" % (key, type)
 
@@ -258,7 +258,9 @@ class Alerter:
                 name = data['name']
 
         if 'key' not in data:
-            data['key'] = slugify(name)
+            assert name is not None, "Name is not set in data=%s" % (data,)
+
+            data['key'] = slugify(name, strip_=False, prefix_='x', suffix_='x')
 
         return data.get('key')
 
@@ -1226,6 +1228,7 @@ class Alerter:
                 r.update(deepcopy(data))
 
             _name = r.getval('name')
+            assert _name is not None, "you have to specify a name in rule: %r" % rule
             _key = self.assert_key(r, _name)
             _disabled = self.config.get('alerter.disabled', [])
             log.warning('key=%r disabled=%r', _key, _disabled)

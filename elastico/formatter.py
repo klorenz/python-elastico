@@ -13,7 +13,7 @@ class ElasticoFormatter(Formatter):
         elif format_spec.endswith('mb'):
             result = ('{:'+format_spec[:-2]+'f}').format(value/1000000.0)
         elif format_spec.endswith('slugify'):
-            result = slugify(value)
+            result = slugify(value, strip_=True)
         elif format_spec.endswith('kibana-discover'):
             pass
             # in case of value beeing a string, must set lucene query, else

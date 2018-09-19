@@ -91,7 +91,7 @@ class Config(ConfigDict):
             self._dir = dirname(filename)
 
     def __getattr__(self, name):
-        log.debug("func='__getattr__' name=%r", name)
+        #log.debug("func='__getattr__' name=%r", name)
 
         # if name == '_dir':
         #     self._dir = '.'
