@@ -14,7 +14,8 @@ from ..connection import elasticsearch
 from ..util import write_output
 from ..server import Server
 
-import pyaml, logging, time
+import pyaml, logging, time, yaml, sys
+
 logger = logging.getLogger('elastico.cli.alerter')
 
 alerter_command = command.add_subcommands('alerter', description=__doc__)
@@ -83,8 +84,18 @@ def alerter_check(config):
 
 # need a command to display dependency tree of alert rules and alerts
 
-#
-
+@alerter_command('deps')
+def alerter_deps(config):
+    alerter = Alerter(config=config)
+    x = pyaml.PrettyYAMLDumper.ignore_aliases
+    try:
+        pyaml.PrettyYAMLDumper.ignore_aliases = lambda *a: True
+        s = pyaml.dumps(alerter.dependency_tree()).decode('utf-8')
+        s = s.replace(": {}", '')
+        s = s.replace(":", '')
+        sys.stdout.write(s)
+    finally:
+        pyaml.PrettyYAMLDumper.ignore_aliases = x
 
 @alerter_command('show',
     arg('item', choices=('rules', 'alerts'), help="choose what to display"),
@@ -94,12 +105,13 @@ def alerter_show(config):
     alerter = Alerter(elasticsearch(config), config)
     if config['alerter.show.item'] == 'rules':
         data = dict((r['name'], r)
-            for r in [rule.format() for rule in alerter.iterate_rules()])
+            for r in [rule.format() for rule in alerter.iterate_rules(ordered=False)])
 
         if config['alerter.show.details']:
             pyaml.p(data)
         else:
-            pyaml.p(sorted([k for k in data.keys()]))
+            pyaml.p(sorted([data[k].get('key') for k in data.keys()]))
+            #pyaml.p(sorted([k for k in data.keys()]))
     elif config['alerter.show.item'] == 'alerts':
         data = dict(('{}.{}'.format(*alerter.get_alert_key_type(alert)), alert)
             for rule,alerts in alerter.iterate_alerts()

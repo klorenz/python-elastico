@@ -922,6 +922,7 @@ def test_alerter_match():
                         'key': 'value_check',
                         'message': 'all ok',
                         'trigger': [],
+                        'name': 'value-check',
                         'status': {
                             'current': 'ok',
                             'end': '2018-05-05T10:20:00Z',

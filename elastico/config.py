@@ -86,20 +86,23 @@ class Config(ConfigDict):
 
     def set_filename(self, filename):
         if filename is not None:
+            log.debug("func='set_filename' filename=%r", filename)
             self._file = filename
             self._dir = dirname(filename)
 
     def __getattr__(self, name):
-        if name == '_dir':
-            self._dir = '.'
-            return self._dir
-        if name == '_file':
-            self._file = '-'
-            return self._file
-        if name == '_files':
-            self._files = set()
-            return self._files
+        log.debug("func='__getattr__' name=%r", name)
 
+        # if name == '_dir':
+        #     self._dir = '.'
+        #     return self._dir
+        # if name == '_file':
+        #     self._file = '-'
+        #     return self._file
+        # if name == '_files':
+        #     self._files = set()
+        #     return self._files
+        #
         try:
             return self[name]
         except KeyError:
@@ -166,8 +169,15 @@ class Config(ConfigDict):
 
         return self
 
+    def getdir(self):
+        if hasattr(self, '_dir'):
+            return self._dir
+        else:
+            return '.'
+
     def include_file(self, path, name=None, action='update', auto_include=True):
-        _dir = self._dir
+        _dir = self.getdir()
+
         log.debug("include_file: path=%s, name=%s, action=%s, _dir=%s", path, name, action, _dir)
 
         if name is not None:
@@ -208,6 +218,9 @@ class Config(ConfigDict):
                     getattr(self[name], action)(_doc)
 
                     if action == 'update':
+                        if not hasattr(self[name], '_files'):
+                            self[name]._files = set()
+
                         self[name]._files.add(path)
                         if hasattr(_doc, '_files'):
                             for f in _doc._files:
@@ -231,6 +244,9 @@ class Config(ConfigDict):
                     log.debug("update self")
 
                     self.update(_doc)
+
+                    if not hasattr(self, '_files'):
+                        self._files = set()
 
                     self._files.add(path)
                     if hasattr(_doc, '_files'):
@@ -261,7 +277,7 @@ class Config(ConfigDict):
         documents (also multidocument YAML files) and append to configuration list
         named `name`.
         '''
-        _dir = self._dir
+        _dir = self.getdir()
         log.debug("update_from_dir:: path=%s, name=%s, action=%s, recursive=%s, _dir=%s", path, name, action, recursive, _dir)
 
         #import rpdb2 ; rpdb2.start_embedded_debugger('foo')
@@ -271,8 +287,9 @@ class Config(ConfigDict):
                 if not isinstance(self[name], Config):
                     self[name] = Config.object(self[name], file=self._file)
 
-                if self[name]._file == '-':
-                    self[name].set_filename(self._file)
+                if hasattr(self[name], '_file'):
+                    if self[name]._file == '-':
+                        self[name].set_filename(self._file)
 
                 if hasattr(self[name], '_dir'):
                     _dir = self[name]._dir

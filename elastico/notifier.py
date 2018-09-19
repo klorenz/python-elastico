@@ -153,6 +153,20 @@ class CommandNotifier(BaseNotifier):
         if not self.config.get('dry_run'):
             (result, stdout, stderr) = run_command(cmd, self.data)
 
+class UrlNotifier(BaseNotifier):
+    def notify(self, message, *configs):
+        _get = lambda n,d=None: self.get_value(n,d,configs=configs)
+        # telegram_bot_token =
+        # get
+        # self.data.format
+
+class TelegramNotifier(BaseNotifier):
+    def notify(self, message, *configs):
+        _get = lambda n,d=None: self.get_value(n,d,configs=configs)
+        # telegram_bot_token =
+        # get
+        # self.data.format
+
 
 class Notifier(BaseNotifier):
     transports = {

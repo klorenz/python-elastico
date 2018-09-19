@@ -1,4 +1,4 @@
-import sys, yaml, os, pytz, pyaml, json
+import sys, yaml, os, pytz, pyaml, json, re
 from os.path import exists, join, isdir
 from subprocess import Popen, PIPE
 from copy import deepcopy
@@ -41,6 +41,7 @@ def dt_isoformat(dt, sep='T', timespec='seconds'):
         result = dt.isoformat(sep, timespec)
         result = result.rsplit('+', 1)[0]
     except TypeError:
+
         result = dt.isoformat(sep)
         result = result.rsplit('+', 1)[0]
 
@@ -285,3 +286,6 @@ def get_alerts(_alerts, context):
 
 def F(s):
     return s.format(**sys._getframe(1).f_locals)
+
+def slugify(s):
+    return re.sub(r'[^\w]+', '_', s.lower()).strip('_')

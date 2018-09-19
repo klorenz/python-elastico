@@ -16,7 +16,7 @@ import logging, sys, json, pyaml, re
 log = logging.getLogger('elastico.alerter')
 
 from .util import to_dt, PY3, dt_isoformat, format_value, get_config_value
-from .util import stripped, get_alerts
+from .util import stripped, get_alerts, slugify
 
 from .config import Config
 
@@ -258,12 +258,14 @@ class Alerter:
                 name = data['name']
 
         if 'key' not in data:
-            data['key'] = re.sub(r'[^\w]+', '_', name.lower()).strip('_')
+            data['key'] = slugify(name)
 
         return data.get('key')
 
     def notify_alert(self, alert_data, all_clear=False):
-        log.debug("notify_alert -- alert_data=%r", alert_data)
+        type = alert_data.getval('type')
+        key = alert_data.getval('key')
+        log_key = "func='notify_alert' key=%r type=%r" % (key, type)
         notifier = Notifier(self.config, alert_data, prefixes=['alerter'])
 
         # set future status
@@ -288,7 +290,7 @@ class Alerter:
         #     remove_subject = True
         #     alert_data['message.subject'] = subject
         #
-        log.info("      notification subject=%r", subject)
+        log.info("%s subject=%r", log_key, subject)
         notifier.notify(subject=subject)
 
     do_alert = notify_alert
@@ -328,8 +330,6 @@ class Alerter:
 
         starttime = dt_isoformat(starttime, 'T', 'seconds')#+"Z"
         endtime   = dt_isoformat(endtime, 'T', 'seconds')#+"Z"
-
-
 
         return {
             'query': {'bool': {'must': [
@@ -757,6 +757,7 @@ class Alerter:
                     log.info("%s wait_time=%r", log_key, wait_time)
 
                     wait_time_s = wait_time.total_seconds()
+
                     alert_data['status.realert'] = wait_time_s
                     log.info("%s status_realert=%r", log_key, wait_time_s)
 
@@ -993,11 +994,16 @@ class Alerter:
     def waiting_process(self, visited, waiting):
         for key,val in [item for item in waiting.items()]:
             done = True
+
             # make sure, that all prerequisites are visited before
             for dep in val['depends']:
                 if dep not in visited:
+                    assert dep in waiting, "there is no rule with key %s, prerequisite of %s"%(dep, key)
+
+                    log.debug("not_visited=%r", dep)
                     done = False
                     break
+
             if done:
                 yield val['item']
                 del waiting[key]
@@ -1014,39 +1020,133 @@ class Alerter:
             return True
         return False
 
-    def iterate_rules(self):
+    def __getattr__(self, name):
+        if name == 'prerequisites':
+            [ r for r in self.iterate_rules() ]
+            return self.prerequisites
+
+        raise AttributeError(name)
+
+    def dependency_tree(self):
+        # under construction
+        tree = {}
+        nodes = {}
+        parents = {}
+
+        for key, reqs in self.prerequisites.items():
+            log.debug("key: %s, reqs: %s", key, reqs)
+            if key not in nodes:
+                nodes[key] = {}
+
+            if not reqs:
+                tree[key] = nodes[key]
+
+            for r_key in reqs:
+                if r_key not in nodes:
+                    nodes[r_key] = {}
+                nodes[r_key][key] = nodes[key]
+
+        return tree
+
+    def get_rule_prerequisites(self, rule):
+        key = rule.getval('key')
+        prerequisites = rule.getval('depends', [])
+        log.debug("expanded rule: %r", rule)
+
+        for condition in ('if', 'if-not', 'if-all',
+            'if-any', 'if-none'):
+
+            cond_deps = rule.getval(condition, [])
+
+            if isinstance(cond_deps, string):
+                cond_deps = [cond_deps]
+
+            prerequisites += cond_deps
+
+        # get alert-level prerequisites and transform to rule level
+        for alert_name, alert in rule.get('alerts', {}).items():
+            for condition in ('if', 'if-not', 'if-all',
+                'if-any', 'if-none'):
+
+                cond_deps = alert.get(condition, [])
+                cond_deps = rule.format(cond_deps, alert)
+
+                if isinstance(cond_deps, string):
+                    cond_deps = [cond_deps]
+
+                prerequisites += [ cd.rsplit('.', 1)[0]
+                                    for cd in cond_deps ]
+        log.debug("key=%r prerequisites=%r", key, prerequisites)
+
+        return prerequisites
+
+
+        # for k,vs in parents.items():
+        #     if k not in nodes:
+        #         nodes[k] = {}
+        #
+        #     for v in vs:
+        #         if v not in nodes:
+        #             nodes[v] = {}
+        #         nodes[v][k] =
+        #     if not vs:
+        #         tree[k] = {}
+        #     else:
+        #         for v in vs:
+        #             if v in tree:
+        #                 tree[v].append(k)
+        #             else:
+        #                 nodes[v] = {}
+        #
+    #def dependency_tree(self):
+    # def iterate_prerequisites(self, tree={}):
+    #     visited = {}
+    #     waiting = {}
+    #     tree = {}
+    #     nodes = {}
+    #     for key, reqs in self.prerequisites.items()
+    #   _     if not reqs:
+    #             tree[key] = nodes[key] = {}
+    #         else:
+    #             for r in reqs:
+    #                 if r in nodes:
+    #                     if key not in nodes[r]:
+    #                         if key not in nodes:
+    #                             nodes[key] = {}
+    #                         nodes[r][key] = nodes[key]
+
+
+    def iterate_rules(self, ordered=True):
         rule_waiting = {}
         visited = set()
+        self.prerequisites = {}
 
         for raw_rule in self.iterate_raw_rules():
             log.debug("raw rule: %r", raw_rule)
+
             for rule in self.expand_raw_rule(raw_rule):
                 # get rule level prerequisites
-                prerequisites = rule.get('depends', [])
-                log.debug("expanded rule: %r", rule)
+                if ordered:
+                    prerequisites = self.get_rule_prerequisites(rule)
 
-                # get alert-level prerequisites and transform to rule level
-                for alert_name, alert in rule.get('alerts', {}).items():
-                    for condition in ('if', 'if-not'):
-                        cond_deps = alert.get(condition, [])
-                        if isinstance(cond_deps, string):
-                            cond_deps = [cond_deps]
+                    key = rule.getval('key')
+                    self.prerequisites[key] = set(prerequisites)
 
-                        prerequisites += [ cd.rsplit('.', 1)[0]
-                                            for cd in cond_deps ]
+                    if self.waiting_add(key, rule, rule_waiting, prerequisites):
+                        continue
 
-                key = rule.getval('key')
-                if self.waiting_add(key, rule, rule_waiting, prerequisites):
-                    continue
                 visited.add(rule['key'])
                 yield rule
 
         while rule_waiting:
+            log.debug("rule_waiting=%r msg='before'", [x for x in rule_waiting.keys()])
             _before = len(rule_waiting)
             for rule in self.waiting_process(visited, rule_waiting):
-                visited.add(rule['key'])
+                visited.add(rule.getval('key'))
                 yield rule
             _after = len(rule_waiting)
+            log.debug("rule_waiting=%r msg='after'", [x for x in rule_waiting.keys()])
+
             assert _before != _after, "rules waiting for dependencies resolved did not reduce "
 
     def iterate_raw_rules(self):
