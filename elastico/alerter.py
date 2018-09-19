@@ -577,6 +577,8 @@ class Alerter:
                 log.debug("%s condition=%r, check_ok=%r", log_key, condition, check_ok)
                 if '.' in condition:
                     _r_key, _a_type = condition.rsplit('.', 1)
+                    _r_key = slugify(_r_key)
+                    _a_type = slugify(_a_type)
 
                     _status = self.read_status(key=_r_key, type=_a_type)
                     if not _status:
@@ -601,8 +603,9 @@ class Alerter:
                         else:
                             log.debug("%s status='ok'", log_key)
                 else:
+                    _condition = slugify(condition)
                     # a rule is in alert if there is any alert active
-                    _status = self.read_status(key=condition, type='rule')
+                    _status = self.read_status(key=_condition, type='rule')
                     if not _status:
                         continue
 

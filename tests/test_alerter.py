@@ -622,22 +622,22 @@ def test_alerter_if_condition(input):
 
     Alerter.STATUS = {
         'fatal': {
-            'is-alert': { 'status': {'current': 'alert'} },
-            'is-ok': { 'status': {'current': 'ok' } },
-            'is-ok-2': { 'status': {'current': 'ok' } },
-            'is-alert-2': { 'status': {'current': 'alert'} },
+            'is_alert': { 'status': {'current': 'alert'} },
+            'is_ok': { 'status': {'current': 'ok' } },
+            'is_ok_2': { 'status': {'current': 'ok' } },
+            'is_alert_2': { 'status': {'current': 'alert'} },
         },
         'warning': {
-            'is-alert': { 'status': {'current': 'ok' } },
-            'is-ok': { 'status': {'current': 'ok' } },
-            'is-ok-2': { 'status': {'current': 'ok' } },
-            'is-alert-2': { 'status': {'current': 'alert'} },
+            'is_alert': { 'status': {'current': 'ok' } },
+            'is_ok': { 'status': {'current': 'ok' } },
+            'is_ok_2': { 'status': {'current': 'ok' } },
+            'is_alert_2': { 'status': {'current': 'alert'} },
         },
         'rule': {
-            'is-alert': { 'alerts': ['fatal'] },
-            'is-alert-2': { 'alerts': ['fatal', 'warning'] },
-            'is-ok': { 'alerts': [] },
-            'is-ok-2': { 'alerts': [] },
+            'is_alert': { 'alerts': ['fatal'] },
+            'is_alert_2': { 'alerts': ['fatal', 'warning'] },
+            'is_ok': { 'alerts': [] },
+            'is_ok_2': { 'alerts': [] },
         }
     }
     alerter = Alerter(config={'at': '2018-09-15T13:47:23Z'})
