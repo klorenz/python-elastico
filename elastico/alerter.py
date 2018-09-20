@@ -925,9 +925,11 @@ class Alerter:
             if was_alert and now_ok:
                 # have to send all-clear for this rule
                 rule_status['status.end'] = dt_isoformat(now)
-                all_clear = self.init_all_clear(rule, rule_status['trigger'], rule_status['status'])
+                all_clear = self.init_all_clear(rule, rule_status['trigger'], status=rule_status['status'], alerts=rule_status['alerts'])
                 self.do_alert(all_clear)
                 rule_status['all_clear'] = all_clear
+                rule_status['alerts'] = []
+                rule_status['trigger'] = []
 
             for alert in alerts:
                 if 'status' not in alert:
@@ -1327,7 +1329,7 @@ class Alerter:
 
 
 
-    def init_all_clear(self, rule, notify, status=None):
+    def init_all_clear(self, rule, notify, status=None, alerts=None):
         all_clear = Config.object()
         #all_clear.update(rule)
         all_clear['key'] = rule.getval('key')
@@ -1335,6 +1337,9 @@ class Alerter:
         all_clear['type'] = 'all-clear'
         if status is not None:
             all_clear['status'] = deepcopy(status)
+        if alerts is not None:
+            all_clear['alerts'] = deepcopy(alerts)
+
         all_clear['status.current'] = 'ok'
         all_clear['trigger'] = notify
         self.assert_key(all_clear)

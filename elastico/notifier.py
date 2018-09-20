@@ -198,8 +198,8 @@ class Notifier(BaseNotifier):
             #if message
             plain = message.get('plain', '{message.text}\n---------\n\n{message.data}')
             text  = message.get('text', '')
-            text  = rule.format(text, Config(kwargs))
-            plain = rule.format(plain, Config(kwargs), Config({'message': {'data': data, 'text': text}}))
+            text  = rule.format(text, self.config, Config(kwargs))
+            plain = rule.format(plain, self.config, Config(kwargs), Config({'message': {'data': data, 'text': text}}))
             html  = markdown.markdown(plain)
         except Exception as e:
             import traceback
@@ -260,6 +260,7 @@ class Notifier(BaseNotifier):
                     data.get('message', {}),
                     data,
                     _ = underscore,
+                    trigger = data,
                     )
 
                 log.debug("data: %r", data)

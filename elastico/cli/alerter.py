@@ -97,13 +97,22 @@ def alerter_deps(config):
     finally:
         pyaml.PrettyYAMLDumper.ignore_aliases = x
 
-@alerter_command('status') #, arg("rule"))
+@alerter_command('status', opt('--all')) #, arg("rule"))
 def alerter_status(config):
     alerter = Alerter(elasticsearch(config), config=config)
-    result = alerter.read_status(key='heartbeat_tcp_cal2')
-    from pprint import pprint
-    pprint(result)
-    pyaml.p(result)
+    statuses = {}
+    for rule in alerter.iterate_rules():
+        key = rule.getval('key')
+        status = alerter.read_status(key=key)
+        if config['alerter.status.all']:
+            statuses[key] = status
+        else:
+            if status['alerts']:
+                statuses[key] = status
+#    result = alerter.read_status(key='heartbeat_tcp_cal2')
+#    from pprint import pprint
+#    pprint(result)
+    pyaml.p(statuses)
 
 
 @alerter_command('show',

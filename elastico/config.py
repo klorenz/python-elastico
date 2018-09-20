@@ -324,6 +324,13 @@ class Config(ConfigDict):
 
 
     def format(self, current=Undefined, *data):
+        def _Config(x):
+            if isinstance(x, ConfigDict):
+                return x
+            if isinstance(x, dict):
+                return Config(x)
+            return x
+
         if current is Undefined:
             current = self
 
@@ -339,6 +346,9 @@ class Config(ConfigDict):
 
                         for d in data:
                             _data.update(d)
+
+                        # make use of dotted notation possible -- is Config too heavyweight?
+                        _data = dict((k,_Config(v)) for k,v in _data.items())
 
                     result = formatter.format(current, **_data)
 

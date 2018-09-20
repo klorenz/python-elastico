@@ -911,31 +911,34 @@ def test_alerter_match():
                      'type': 'fatal'
                 }
             },
-            'rule': {'value_check': {'@timestamp': at_s,
-                    'status': {
-                        'end': '2018-05-05T10:20:00Z',
-                        'severity': 0,
-                        'id': 'value_check_2018-05-05T10:07:00Z',
-                        'start': '2018-05-05T10:07:00Z',
-                    },
-                    'all_clear': {
-                        'key': 'value_check',
-                        'message': 'all ok',
-                        'trigger': [],
-                        'name': 'value-check',
-                        'status': {
-                            'current': 'ok',
-                            'end': '2018-05-05T10:20:00Z',
-                            'id': 'value_check_2018-05-05T10:07:00Z',
-                            'severity': 0,
-                            'start': '2018-05-05T10:07:00Z'
-                        },
-                        'type': 'all-clear'},
+            'rule': {
+                'value_check': {'@timestamp': at_s,
+                'status': {
+                    'end': '2018-05-05T10:20:00Z',
+                    'severity': 0,
+                    'id': 'value_check_2018-05-05T10:07:00Z',
+                    'start': '2018-05-05T10:07:00Z',
+                },
+                'all_clear': {
                     'alerts': list(set(['fatal', 'warning'])),
-                          'key': 'value_check',
-                          'name': 'value-check',
-                          'trigger': [],
-                          'type': 'rule'}},
+                    'key': 'value_check',
+                    'message': 'all ok',
+                    'trigger': [],
+                    'name': 'value-check',
+                    'status': {
+                        'current': 'ok',
+                        'end': '2018-05-05T10:20:00Z',
+                        'id': 'value_check_2018-05-05T10:07:00Z',
+                        'severity': 0,
+                        'start': '2018-05-05T10:07:00Z'
+                    },
+                    'type': 'all-clear'},
+                'alerts': [],
+                'key': 'value_check',
+                'name': 'value-check',
+                'trigger': [],
+                'type': 'rule'}
+            },
             'warning': {
                 'value_check': {
                     'name': 'value-check',
@@ -1332,4 +1335,13 @@ def test_compose_message():
     assert html == dedent('''\
         <p>hello Esmeralda</p>''')
 
+# def test_compose_message_kibana_url():
+#     notifier = Notifier(Config())
+#     data = Config({})
+#     (text, data, plain, html) = notifier.compose_message_text(
+#         {'text': '[kibana]\n\n[kibana]: {data:kibana-discover}', 'plain': '{message.text}'},
+#         data,
+#         data = data,
+#     )
+#
 
