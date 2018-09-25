@@ -750,7 +750,36 @@ class Alerter:
                     log.error("error", exc_info=1)
 
                 if not delta:
-                    delta = timedelta(**realert)
+                    factor = float(alert_data.get('realert.factor', 1))
+                    max_len = alert_data.get('realert.timespan_max', {})
+                    min_len = alert_data.get('realert.timespan_min', {'seconds': 10})
+                    rewind = alert_data.get('realert.rewind', True)
+                    count = int(last_rule.get('status.realert_count', 0))
+
+                    _realert = {}
+                    _realert.update(alert_data.get('realert', {}))
+                    for k in ['factor', 'timespan_max', 'timespan_min', 'rewind']:
+                        if k in _realert:
+                            del _realert[k]
+
+                    delta_s = timedelta(**_realert).total_seconds()
+                    delta = timedelta(seconds=delta_s*(factor**count))
+                    if max_len:
+                        max_delta = timedelta(**max_len)
+                        if delta > max_delta:
+                            if rewind:
+                                delta = timedelta(seconds=delta_s)
+                            else:
+                                delta = max_delta
+
+                    if min_len:
+                        min_delta = timedelta(**min_len)
+                        if delta < min_delta:
+                            if rewind:
+                                delta = timedelta(seconds=delta_s)
+                            else:
+                                delta = min_delta
+
 
                 time_passed = now - to_dt(last_rule['@timestamp'])
 
@@ -772,6 +801,8 @@ class Alerter:
                     if alert_data['status.previous'] != 'ok':
                         alert_data['status.current'] = 'realert'
                     alert_data['status.realert'] = 0
+                    count = int(last_rule.get('status.realert_count', 0))
+                    alert_data['status.realert_count'] = count + 1
 
                     log.warning("%s status_current=%r msg='trigger alert'",
                         log_key, alert_data['status.current'])
@@ -787,6 +818,7 @@ class Alerter:
                 alerts.append(alert)
 
             yield (rule, alerts)
+
 
     def alert_init_status(self, alert):
         log_key = "func='alert_init_status' key=%(key)r type=%(type)r" % alert
@@ -836,6 +868,7 @@ class Alerter:
 
         return alert
 
+
     def rule_init_status(self, rule):
         key = rule.getval('key')
         log_key = "func='alert_init_status' key=%r" % key
@@ -878,9 +911,11 @@ class Alerter:
 
             was_ok = all([ a['status.previous'] == 'ok' for a in alerts])
             now_ok = all([ a['status.current'] == 'ok' for a in alerts])
-            was_alert = lambda a: a['status.previous'] != 'ok'
-            was_alert = [ x for x in filter(was_alert, alerts)]
-            now_alert = not now_ok
+
+            was_alert = all([ a['status.previous'] != 'ok' for a in alerts])
+
+            now_alert = lambda a: a['status.current'] != 'ok'
+            now_alert = [ x for x in filter(now_alert, alerts)]
 
             log.debug("%s was_ok=%r now_ok=%r was_alert=%r",
                 log_key, was_ok, now_ok, was_alert)
@@ -898,23 +933,14 @@ class Alerter:
                 return l
 
 
-            # update list of notifications done on this rule
-            if was_ok:
-                done_notify = []
-            else:
-                done_notify = _get_list(rule_status, 'trigger')
-
-            notify_lists = [_get_list(a, 'trigger') for a in was_alert]
-            done_notify = list(set(chain(done_notify, *notify_lists)))
-            rule_status['trigger'] = done_notify
 
             # update list of alerts done on this rule
             if was_ok:
                 done_alerts = []
             else:
                 done_alerts = _get_list(rule_status, 'alerts')
-            alerts_list = [ a['type'] for a in was_alert ]
-            done_alerts = list(set(chain(done_alerts, alerts_list)))
+            alerts_list = [ a['type'] for a in now_alert ]
+            done_alerts = sorted(list(set(chain(done_alerts, alerts_list))))
             rule_status['alerts'] = done_alerts
 
             # get severity of the alert
@@ -924,12 +950,16 @@ class Alerter:
 
             if was_alert and now_ok:
                 # have to send all-clear for this rule
+                for a in alerts:
+                    if 'status.realert' in a:
+                        del a['status']['realert']
+
                 rule_status['status.end'] = dt_isoformat(now)
-                all_clear = self.init_all_clear(rule, rule_status['trigger'], status=rule_status['status'], alerts=rule_status['alerts'])
+                all_clear = self.init_all_clear(rule, rule_status['triggers'], status=rule_status['status'], alerts=rule_status['alerts'])
                 self.do_alert(all_clear)
                 rule_status['all_clear'] = all_clear
                 rule_status['alerts'] = []
-                rule_status['trigger'] = []
+                rule_status['triggers'] = []
 
             for alert in alerts:
                 if 'status' not in alert:
@@ -945,6 +975,16 @@ class Alerter:
                         self.do_alert(alert)
 
                 self.write_status(alert)
+
+            # update list of notifications done on this rule
+            if was_ok:
+                done_notify = []
+            else:
+                done_notify = _get_list(rule_status, 'triggers')
+
+            notify_list = [ k for a in alerts for k in a.get('triggered', {}).keys() ]
+            done_notify = sorted(list(set(chain(done_notify, notify_list))))
+            rule_status['triggers'] = done_notify
 
             self.write_status(rule_status)
 
@@ -1341,7 +1381,7 @@ class Alerter:
             all_clear['alerts'] = deepcopy(alerts)
 
         all_clear['status.current'] = 'ok'
-        all_clear['trigger'] = notify
+        all_clear['triggers'] = notify
         self.assert_key(all_clear)
         all_clear.update(rule.get('all_clear', {}))
         log.info("all_clear=%r", all_clear)

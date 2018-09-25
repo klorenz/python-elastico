@@ -333,8 +333,8 @@ def test_alerter_alert(monkeypatch):
  'rule': {'test': {'@timestamp': '2018-05-05T10:07:00Z',
                    'key': 'test',
                    'name': 'test',
-                   'trigger': [],
-                   'alerts': [],
+                   'triggers': [],
+                   'alerts': ['warning'],
                    'status': {
                         'id': 'test_2018-05-05T10:07:00Z',
                             'severity': 10,
@@ -659,8 +659,8 @@ def test_alerter_match():
     es = elasticsearch()
 
     index  = "test-alerter-match"
-    values = [ 20, 21, 19, 15, 12, 11, 4, 5, 6, 21, 22]
-    #      10: 00  01  02  03  04  05 06 07 08  09  10
+    values = [ 20, 21, 19, 15, 12, 11, 4, 5, 6, 21, 22, 24, 22, 24, 24, 25]
+    #      10: 00  01  02  03  04  05 06 07 08  09  10  11  12  13  14  15
     # TEST1  ------------
     # test2           ---------------------
 
@@ -681,6 +681,12 @@ def test_alerter_match():
 
         _config = Config.object("""
             alerter:
+                actions:
+                    test_notifier:
+                        type: command
+                        command: echo "hello"
+                        stdout: True
+
                 severity:
                     fatal: 2
                     warning: 1
@@ -688,13 +694,24 @@ def test_alerter_match():
                     - name: value-check
                       timeframe:
                         minutes: 5
+                      every:
+                        seconds: 50
+                      realert:
+                        seconds: 100
+                        factor: 2
+                        timespan_max:
+                            seconds: 500
                       alerts:
                         fatal:
                           match: "value:[0 TO 10]"
                           index: test-alerter-match
+                          trigger:
+                            - test_notifier
                         warning:
                           match: "value:[10 TO 13]"
                           index: test-alerter-match
+                          trigger:
+                            - test_notifier
                       all_clear:
                         message: "all ok"
 
@@ -733,6 +750,7 @@ def test_alerter_match():
                     'name': 'value-check',
                     '@timestamp': at_s,
                     'at': at_s,
+                    'every': {'seconds': 50},
                     'timeframe':{'minutes': 5},
                     'index': 'test-alerter-match',
                     'key': 'value_check',
@@ -741,11 +759,17 @@ def test_alerter_match():
                     'alert_trigger': False,
                     'match_hits_total': 0,
                     'all_clear': {'message': 'all ok'},
+                    'realert': {
+                        'seconds': 100,
+                        'factor': 2,
+                        'timespan_max': {'seconds': 500},
+                    },
                     'status': {
                         'current': 'ok',
                         'severity': 0,
                         'next_check': 0, 'previous': 'ok'},
-                    'type': 'fatal'
+                    'trigger': ['test_notifier'],
+                    'type': 'fatal',
                 }
             },
             'rule': {'value_check': {'@timestamp': at_s,
@@ -753,25 +777,32 @@ def test_alerter_match():
                           'key': 'value_check',
                           'name': 'value-check',
                           'status': {'severity': 0},
-                          'trigger': [],
+                          'triggers': [],
                           'type': 'rule'}},
             'warning': {
                 'value_check': {
                     'name': 'value-check',
                     '@timestamp': at_s,
                     'at': at_s,
+                    'alert_trigger': False,
+                    'all_clear': {'message': 'all ok'},
+                    'every': {'seconds': 50},
                     'timeframe':{'minutes': 5},
                     'index': 'test-alerter-match',
                     'key': 'value_check',
                     'match': 'value:[10 TO 13]',
                     'match_query': _match_query('value:[10 TO 13]', '09:57', '10:02'),
-                    'alert_trigger': False,
                     'match_hits_total': 0,
-                    'all_clear': {'message': 'all ok'},
+                    'realert': {
+                        'seconds': 100,
+                        'factor': 2,
+                        'timespan_max': {'seconds': 500},
+                    },
                     'status': {
                         'current': 'ok',
                           'severity': 0,
                         'next_check': 0, 'previous': 'ok'},
+                    'trigger': ['test_notifier'],
                     'type': 'warning'
                 }
             }
@@ -786,7 +817,6 @@ def test_alerter_match():
         alerter.check_alerts()
 
         start_s = at_s
-
         pprint(Alerter.STATUS)
 
         assert (2, Alerter.STATUS) == (2, {
@@ -799,6 +829,7 @@ def test_alerter_match():
                     'index': 'test-alerter-match',
                      'key': 'value_check',
                      'match': 'value:[0 TO 10]',
+                    'every': {'seconds': 50},
                     'all_clear': {'message': 'all ok'},
                     'match_query': _match_query('value:[0 TO 10]', '10:02', '10:07'),
                      'match_hit': {
@@ -815,6 +846,26 @@ def test_alerter_match():
 
                      'alert_trigger': True,
                      'match_hits_total': 2,
+                    'realert': {
+                        'seconds': 100,
+                        'factor': 2,
+                        'timespan_max': {'seconds': 500},
+                    },
+                  'triggered': {'test_notifier': {'action': 'test_notifier',
+                               'command': 'echo '
+                                          '"hello"',
+                               'message': {'subject': '[elastico] '
+                                                      'ALERT '
+                                                      '- '
+                                                      'fatal '
+                                                      'value-check',
+                                           'text': ''},
+                               'result': {'exit_code': 0,
+                                          'stdout': b'hell'
+                                                    b'o'},
+                               'status': 'ok',
+                               'stdout': True,
+                               'type': 'command'}},
                      'status': {
                         'current': 'alert',
                         'id': 'value_check_2018-05-05T10:07:00Z',
@@ -823,11 +874,12 @@ def test_alerter_match():
                         'previous': 'ok',
                         'start': '2018-05-05T10:07:00Z',
                         },
+                    'trigger': ['test_notifier'],
                      'type': 'fatal'
                 }
             },
             'rule': {'value_check': {'@timestamp': at_s,
-                          'alerts': [],
+                      'alerts': sorted(['warning', 'fatal']),
                         'status' : {
                             'id': 'value_check_2018-05-05T10:07:00Z',
                             'start': '2018-05-05T10:07:00Z',
@@ -835,13 +887,14 @@ def test_alerter_match():
                         },
                           'key': 'value_check',
                           'name': 'value-check',
-                          'trigger': [],
+                          'triggers': ['test_notifier'],
                           'type': 'rule'}},
             'warning': {
                 'value_check': {
                     'name': 'value-check',
                     '@timestamp': at_s,
                     'at': at_s,
+                    'every': {'seconds': 50},
                     'timeframe':{'minutes': 5},
                     'index': 'test-alerter-match',
                     'all_clear': {'message': 'all ok'},
@@ -861,6 +914,11 @@ def test_alerter_match():
                     },
                     'alert_trigger': True,
                     'match_hits_total': 2,
+                    'realert': {
+                        'seconds': 100,
+                        'factor': 2,
+                        'timespan_max': {'seconds': 500},
+                    },
                     'status': {
                         'current': 'alert',
                         'next_check': 0,
@@ -869,13 +927,365 @@ def test_alerter_match():
                         'id': 'value_check_2018-05-05T10:07:00Z',
                         'start': '2018-05-05T10:07:00Z',
                         },
+                    'trigger': ['test_notifier'],
+                   'triggered': {'test_notifier': {'action': 'test_notifier',
+                                 'command': 'echo '
+                                            '"hello"',
+                                 'message': {'subject': '[elastico] '
+                                                        'ALERT '
+                                                        '- '
+                                                        'warning '
+                                                        'value-check',
+                                             'text': ''},
+                                 'result': {'exit_code': 0,
+                                            'stdout': b'hell'
+                                                      b'o'},
+                                 'status': 'ok',
+                                 'stdout': True,
+                                 'type': 'command'}},
                     'type': 'warning'
                 }
             }
         })
 
-        print("=== check 3 ===")
-        log.debug("=== check 3 ===")
+        print("=== check 3 not yet realert ===")
+        log.debug("=== check 3 not yet realert ===")
+
+        alerter = Alerter(config =_config, es_client=es)
+        at_s = "2018-05-05T10:08:00Z"
+        alerter.config['arguments'] = dict(at=at_s)
+        alerter.check_alerts()
+
+        start_s = at_s
+        pprint(Alerter.STATUS)
+        assert (3, Alerter.STATUS) == (3, {
+        'fatal': {'value_check': {'@timestamp': '2018-05-05T10:08:00Z',
+                           'alert_trigger': True,
+                           'all_clear': {'message': 'all ok'},
+                           'at': '2018-05-05T10:08:00Z',
+                           'every': {'seconds': 50},
+                           'index': 'test-alerter-match',
+
+                           'key': 'value_check',
+                           'match': 'value:[0 TO 10]',
+                           'match_hit': {'_id': '8',
+                                         '_index': 'test-alerter-match',
+                                         '_score': None,
+                                         '_source': {'@timestamp': '2018-05-05T10:08:00Z',
+                                                     'value': 6},
+                                         '_type': 'doc',
+                                         'sort': [1525514880000]},
+                           'match_hits_total': 3,
+                           'match_query': {'query': {'bool': {'must': [{'range': {'@timestamp': {'gte': '2018-05-05T10:03:00Z',
+                                                                                                 'lte': '2018-05-05T10:08:00Z'}}},
+                                                                       {'query_string': {'query': 'value:[0 '
+                                                                                                  'TO '
+                                                                                                  '10]'}}]}},
+                                           'size': 1,
+                                           'sort': [{'@timestamp': 'desc'}]},
+                           'name': 'value-check',
+                           'realert': {'factor': 2,
+                                       'seconds': 100,
+                                       'timespan_max': {'seconds': 500}},
+                           'status': {'current': 'alert',
+                                                               'id': 'value_check_2018-05-05T10:07:00Z',
+                                      'next_check': 0,
+                                      'previous': 'alert',
+                                      'realert': 40.0,
+                                      'severity': 2,
+                                      'start': '2018-05-05T10:07:00Z'},
+                           'timeframe': {'minutes': 5},
+                           'trigger': ['test_notifier'],
+                           'type': 'fatal'}},
+
+ 'rule': {'value_check': {'@timestamp': '2018-05-05T10:08:00Z',
+                          'alerts': ['fatal', 'warning'],
+                          'key': 'value_check',
+                          'name': 'value-check',
+                          'status': {'id': 'value_check_2018-05-05T10:07:00Z',
+                                     'severity': 2,
+                                     'start': '2018-05-05T10:07:00Z'},
+                          'triggers': ['test_notifier'],
+                          'type': 'rule'}},
+ 'warning': {'value_check': {'@timestamp': '2018-05-05T10:08:00Z',
+                             'alert_trigger': True,
+                             'all_clear': {'message': 'all ok'},
+                             'at': '2018-05-05T10:08:00Z',
+                             'every': {'seconds': 50},
+                             'index': 'test-alerter-match',
+                             'key': 'value_check',
+                             'match': 'value:[10 TO 13]',
+                                                        'match_hit': {'_id': '5',
+                                           '_index': 'test-alerter-match',
+                                           '_score': None,
+                                           '_source': {'@timestamp': '2018-05-05T10:05:00Z',
+                                                       'value': 11},
+                                           '_type': 'doc',
+                                           'sort': [1525514700000]},
+                             'match_hits_total': 2,
+                             'match_query': {'query': {'bool': {'must': [{'range': {'@timestamp': {'gte': '2018-05-05T10:03:00Z',
+                                                                                                   'lte': '2018-05-05T10:08:00Z'}}},
+
+                                                                         {'query_string': {'query': 'value:[10 '
+                                                                                                    'TO '
+                                                                                                    '13]'}}]}},
+                                             'size': 1,
+                                             'sort': [{'@timestamp': 'desc'}]},
+                             'name': 'value-check',
+                             'realert': {'factor': 2,
+                                         'seconds': 100,
+                                         'timespan_max': {'seconds': 500}},
+                             'status': {'current': 'alert',
+                                        'id': 'value_check_2018-05-05T10:07:00Z',
+                                        'next_check': 0,
+                                        'previous': 'alert',
+                                        'realert': 40.0,
+                                        'severity': 2,
+                                        'start': '2018-05-05T10:07:00Z'},
+                             'timeframe': {'minutes': 5},
+                             'trigger': ['test_notifier'],
+                             'type': 'warning'}}
+        })
+
+        print("=== check 4 now realert ===")
+        log.debug("=== check 4 now realert ===")
+
+        alerter = Alerter(config =_config, es_client=es)
+        at_s = "2018-05-05T10:09:00Z"
+        alerter.config['arguments'] = dict(at=at_s)
+        alerter.check_alerts()
+
+        start_s = at_s
+        pprint(Alerter.STATUS)
+        assert (4, Alerter.STATUS) == (4,
+        {'fatal': {'value_check': {'@timestamp': '2018-05-05T10:09:00Z',
+                           'alert_trigger': True,
+                           'all_clear': {'message': 'all ok'},
+                           'at': '2018-05-05T10:09:00Z',
+                           'every': {'seconds': 50},
+                           'index': 'test-alerter-match',
+                           'key': 'value_check',
+                           'match': 'value:[0 TO 10]',
+                           'match_hit': {'_id': '8',
+
+                                         '_index': 'test-alerter-match',
+                                         '_score': None,
+                                         '_source': {'@timestamp': '2018-05-05T10:08:00Z',
+                                                     'value': 6},
+                                         '_type': 'doc',
+                                         'sort': [1525514880000]},
+                           'match_hits_total': 3,
+                           'match_query': {'query': {'bool': {'must': [{'range': {'@timestamp': {'gte': '2018-05-05T10:04:00Z',
+                                                                                                 'lte': '2018-05-05T10:09:00Z'}}},
+                                                                       {'query_string': {'query': 'value:[0 '
+                                                                                                  'TO '
+                                                                                                  '10]'}}]}},
+                                           'size': 1,
+                                           'sort': [{'@timestamp': 'desc'}]},
+                           'name': 'value-check',
+                           'realert': {'factor': 2,
+                                       'seconds': 100,
+                                       'timespan_max': {'seconds': 500}},
+                           'status': {'current': 'realert',
+                                      'id': 'value_check_2018-05-05T10:07:00Z',
+                                      'next_check': 0,
+                                      'previous': 'alert',
+                                      'realert': 0,
+                                      'realert_count': 1,
+                                      'severity': 2,
+                                      'start': '2018-05-05T10:07:00Z'},
+                           'timeframe': {'minutes': 5},
+                           'trigger': ['test_notifier'],
+                           'triggered': {'test_notifier': {'action': 'test_notifier',
+                                                           'command': 'echo '
+                                                                      '"hello"',
+                                                           'message': {'subject': '[elastico] '
+                                                                                  'REALERT '
+
+                                                                                  '- '
+                                                                                  'fatal '
+                                                                                  'value-check',
+                                                                       'text': ''},
+                                                           'result': {'exit_code': 0,
+                                                                      'stdout': b'hell'
+                                                                                b'o'},
+                                                           'status': 'ok',
+                                                           'stdout': True,
+                                                           'type': 'command'}},
+                           'type': 'fatal'}},
+ 'rule': {'value_check': {'@timestamp': '2018-05-05T10:09:00Z',
+                          'alerts': ['fatal', 'warning'],
+                          'key': 'value_check',
+                          'name': 'value-check',
+                          'status': {'id': 'value_check_2018-05-05T10:07:00Z',
+                                     'severity': 2,
+                                     'start': '2018-05-05T10:07:00Z'},
+                          'triggers': ['test_notifier'],
+                          'type': 'rule'}},
+ 'warning': {'value_check': {'@timestamp': '2018-05-05T10:09:00Z',
+                             'alert_trigger': True,
+                             'all_clear': {'message': 'all ok'},
+                             'at': '2018-05-05T10:09:00Z',
+                             'every': {'seconds': 50},
+                             'index': 'test-alerter-match',
+                             'key': 'value_check',
+                             'match': 'value:[10 TO 13]',
+                             'match_hit': {'_id': '5',
+
+                                           '_index': 'test-alerter-match',
+                                           '_score': None,
+                                           '_source': {'@timestamp': '2018-05-05T10:05:00Z',
+                                                       'value': 11},
+                                           '_type': 'doc',
+                                           'sort': [1525514700000]},
+                             'match_hits_total': 2,
+                             'match_query': {'query': {'bool': {'must': [{'range': {'@timestamp': {'gte': '2018-05-05T10:04:00Z',
+                                                                                                   'lte': '2018-05-05T10:09:00Z'}}},
+                                                                         {'query_string': {'query': 'value:[10 '
+                                                                                                    'TO '
+                                                                                                    '13]'}}]}},
+                                             'size': 1,
+                                             'sort': [{'@timestamp': 'desc'}]},
+                             'name': 'value-check',
+                             'realert': {'factor': 2,
+                                         'seconds': 100,
+                                         'timespan_max': {'seconds': 500}},
+                             'status': {'current': 'realert',
+                                        'id': 'value_check_2018-05-05T10:07:00Z',
+                                        'next_check': 0,
+                                        'previous': 'alert',
+                                        'realert': 0,
+                                        'realert_count': 1,
+                                        'severity': 2,
+                                        'start': '2018-05-05T10:07:00Z'},
+                             'timeframe': {'minutes': 5},
+                             'trigger': ['test_notifier'],
+                             'triggered': {'test_notifier': {'action': 'test_notifier',
+
+                                                             'command': 'echo '
+                                                                        '"hello"',
+                                                             'message': {'subject': '[elastico] '
+                                                                                    'REALERT '
+                                                                                    '- '
+                                                                                    'warning '
+                                                                                    'value-check',
+                                                                         'text': ''},
+                                                             'result': {'exit_code': 0,
+                                                                        'stdout': b'hell'
+                                                                                  b'o'},
+                                                             'status': 'ok',
+                                                             'stdout': True,
+                                                             'type': 'command'}},
+                             'type': 'warning'}}}
+        )
+
+        print("=== check 5 realert-3 ===")
+        log.debug("=== check 5 realert-3 ===")
+
+        alerter = Alerter(config =_config, es_client=es)
+        at_s = "2018-05-05T10:10:00Z"
+        alerter.config['arguments'] = dict(at=at_s)
+        alerter.check_alerts()
+
+        start_s = at_s
+        pprint(Alerter.STATUS)
+        assert (5, Alerter.STATUS) == (5,
+            {'fatal': {'value_check': {'@timestamp': '2018-05-05T10:10:00Z',
+                           'alert_trigger': True,
+                           'all_clear': {'message': 'all ok'},
+                           'at': '2018-05-05T10:10:00Z',
+                           'every': {'seconds': 50},
+                           'index': 'test-alerter-match',
+                           'key': 'value_check',
+                           'match': 'value:[0 TO 10]',
+                           'match_hit': {'_id': '8',
+
+                                         '_index': 'test-alerter-match',
+                                         '_score': None,
+                                         '_source': {'@timestamp': '2018-05-05T10:08:00Z',
+                                                     'value': 6},
+                                         '_type': 'doc',
+                                         'sort': [1525514880000]},
+                           'match_hits_total': 3,
+                           'match_query': {'query': {'bool': {'must': [{'range': {'@timestamp': {'gte': '2018-05-05T10:05:00Z',
+                                                                                                 'lte': '2018-05-05T10:10:00Z'}}},
+                                                                       {'query_string': {'query': 'value:[0 '
+                                                                                                  'TO '
+                                                                                                  '10]'}}]}},
+                                           'size': 1,
+                                           'sort': [{'@timestamp': 'desc'}]},
+
+                                                                  'name': 'value-check',
+                           'realert': {'factor': 2,
+                                       'seconds': 100,
+                                       'timespan_max': {'seconds': 500}},
+                           'status': {'current': 'alert',
+                                      'id': 'value_check_2018-05-05T10:07:00Z',
+                                      'next_check': 0,
+                                      'previous': 'realert',
+                                      'realert': 140.0,
+
+                                      'severity': 2,
+                                      'start': '2018-05-05T10:07:00Z'},
+                           'timeframe': {'minutes': 5},
+                           'trigger': ['test_notifier'],
+                           'type': 'fatal'}},
+        'rule': {'value_check': {'@timestamp': '2018-05-05T10:10:00Z',
+                          'alerts': ['fatal', 'warning'],
+                          'key': 'value_check',
+                          'name': 'value-check',
+                          'status': {'id': 'value_check_2018-05-05T10:07:00Z',
+                                     'severity': 2,
+                                     'start': '2018-05-05T10:07:00Z'},
+                          'triggers': ['test_notifier'],
+                          'type': 'rule'}},
+
+        'warning': {'value_check': {'@timestamp': '2018-05-05T10:10:00Z',
+                             'alert_trigger': True,
+                             'all_clear': {'message': 'all ok'},
+                             'at': '2018-05-05T10:10:00Z',
+                             'every': {'seconds': 50},
+                             'index': 'test-alerter-match',
+                             'key': 'value_check',
+                             'match': 'value:[10 TO 13]',
+                             'match_hit': {'_id': '5',
+
+                                           '_index': 'test-alerter-match',
+                                           '_score': None,
+                                           '_source': {'@timestamp': '2018-05-05T10:05:00Z',
+                                                       'value': 11},
+                                           '_type': 'doc',
+                                           'sort': [1525514700000]},
+                             'match_hits_total': 1,
+                             'match_query': {'query': {'bool': {'must': [{'range': {'@timestamp': {'gte': '2018-05-05T10:05:00Z',
+                                                                                                   'lte': '2018-05-05T10:10:00Z'}}},
+                                                                         {'query_string': {'query': 'value:[10 '
+                                                                                                    'TO '
+                                                                                                    '13]'}}]}},
+                                             'size': 1,
+                                             'sort': [{'@timestamp': 'desc'}]},
+
+                                                                         'name': 'value-check',
+                             'realert': {'factor': 2,
+                                         'seconds': 100,
+                                         'timespan_max': {'seconds': 500}},
+                             'status': {'current': 'alert',
+                                        'id': 'value_check_2018-05-05T10:07:00Z',
+                                        'next_check': 0,
+                                        'previous': 'realert',
+
+                                        'realert': 140.0,
+                                        'severity': 2,
+                                        'start': '2018-05-05T10:07:00Z'},
+                             'timeframe': {'minutes': 5},
+                             'trigger': ['test_notifier'],
+                             'type': 'warning'}}}
+
+        )
+
+
+        print("=== check 6 all_clear ===")
+        log.debug("=== check 6 all_clear ===")
 
         alerter = Alerter(config =_config, es_client=es)
         at_s = "2018-05-05T10:20:00Z"
@@ -885,20 +1295,23 @@ def test_alerter_match():
 
         pprint(Alerter.STATUS)
 
-        assert (3, Alerter.STATUS) == (3, {
+        assert (6, Alerter.STATUS) == (6, {
             'fatal': {
                 'value_check': {
                     'name': 'value-check',
                     '@timestamp': at_s,
                     'at': at_s,
-                    'timeframe':{'minutes': 5},
-                    'index': 'test-alerter-match',
                     'all_clear': {'message': 'all ok'},
+                     'alert_trigger': False,
+                    'every': {'seconds': 50},
+                    'timeframe':{'minutes': 5},
+                    'trigger': ['test_notifier'],
+                    'index': 'test-alerter-match',
                      'key': 'value_check',
                      'match': 'value:[0 TO 10]',
-                    'match_query': _match_query('value:[0 TO 10]', '10:15', '10:20'),
-                     'alert_trigger': False,
                      'match_hits_total': 0,
+                    'match_query': _match_query('value:[0 TO 10]', '10:15', '10:20'),
+                    'realert': {'factor': 2, 'seconds': 100, 'timespan_max': {'seconds': 500}},
                      'status': {
                         'current': 'ok',
                         'previous': 'alert',
@@ -920,10 +1333,10 @@ def test_alerter_match():
                     'start': '2018-05-05T10:07:00Z',
                 },
                 'all_clear': {
-                    'alerts': list(set(['fatal', 'warning'])),
+                    'alerts': sorted(['fatal', 'warning']),
                     'key': 'value_check',
                     'message': 'all ok',
-                    'trigger': [],
+                    'triggers': ['test_notifier'],
                     'name': 'value-check',
                     'status': {
                         'current': 'ok',
@@ -936,7 +1349,7 @@ def test_alerter_match():
                 'alerts': [],
                 'key': 'value_check',
                 'name': 'value-check',
-                'trigger': [],
+                'triggers': [],
                 'type': 'rule'}
             },
             'warning': {
@@ -944,6 +1357,8 @@ def test_alerter_match():
                     'name': 'value-check',
                     '@timestamp': at_s,
                     'at': at_s,
+                    'every': {'seconds': 50},
+                    'trigger': ['test_notifier'],
                     'timeframe':{'minutes': 5},
                     'index': 'test-alerter-match',
                     'all_clear': {'message': 'all ok'},
@@ -952,6 +1367,11 @@ def test_alerter_match():
                     'match_query': _match_query('value:[10 TO 13]', '10:15', '10:20'),
                     'alert_trigger': False,
                     'match_hits_total': 0,
+                    'realert':{
+                        'factor': 2,
+                        'seconds': 100,
+                        'timespan_max': {'seconds': 500}
+                    },
                     'status': {
                         'current': 'ok',
                         'previous': 'alert',
@@ -1238,10 +1658,10 @@ def test_alerter_command():
                            'previous': 'ok'},
                            'type': 'hummhomm3'}},
   'rule': { 'test': { '@timestamp': '2018-05-05T10:07:00Z',
-                      'alerts': [],
+                      'alerts': ['hummhomm3'],
                       'key': 'test',
                       'name': 'test',
-                      'trigger': [],
+                      'triggers': ['sound'],
                       'status': {
                         'id': 'test_2018-05-05T10:07:00Z',
                         'severity': 1,
