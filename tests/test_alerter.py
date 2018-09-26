@@ -1386,6 +1386,83 @@ def test_alerter_match():
             }
         })
 
+        print("=== check 7 ok - again ===")
+        alerter = Alerter(config =_config, es_client=es)
+        at_s = "2018-05-05T10:21:00Z"
+        alerter.config['arguments'] = {'at': at_s}
+
+        alerter.check_alerts()
+
+        pprint(Alerter.STATUS)
+
+        assert (7, Alerter.STATUS) == (7, {
+            'fatal': {
+                'value_check': {
+                    'name': 'value-check',
+                    '@timestamp': at_s,
+                    'at': at_s,
+                    'all_clear': {'message': 'all ok'},
+                    'alert_trigger': False,
+                    'every': {'seconds': 50},
+                    'timeframe':{'minutes': 5},
+                    'trigger': ['test_notifier'],
+                    'index': 'test-alerter-match',
+                    'key': 'value_check',
+                    'match': 'value:[0 TO 10]',
+                    'match_hits_total': 0,
+                    'match_query': _match_query('value:[0 TO 10]', '10:16', '10:21'),
+                    'realert': {'factor': 2, 'seconds': 100, 'timespan_max': {'seconds': 500}},
+                    'status': {
+                        'current': 'ok',
+                        'previous': 'ok',
+                        'severity': 0,
+                        'next_check': 0,
+                    },
+                    'type': 'fatal'
+                }
+            },
+            'rule': {
+                'value_check': {'@timestamp': at_s,
+                'status': {
+                    'severity': 0,
+                },
+                'alerts': [],
+                'key': 'value_check',
+                'name': 'value-check',
+                'triggers': [],
+                'type': 'rule'}
+            },
+            'warning': {
+                'value_check': {
+                    'name': 'value-check',
+                    '@timestamp': at_s,
+                    'at': at_s,
+                    'every': {'seconds': 50},
+                    'trigger': ['test_notifier'],
+                    'timeframe':{'minutes': 5},
+                    'index': 'test-alerter-match',
+                    'all_clear': {'message': 'all ok'},
+                    'key': 'value_check',
+                    'match': 'value:[10 TO 13]',
+                    'match_query': _match_query('value:[10 TO 13]', '10:16', '10:21'),
+                    'alert_trigger': False,
+                    'match_hits_total': 0,
+                    'realert':{
+                        'factor': 2,
+                        'seconds': 100,
+                        'timespan_max': {'seconds': 500}
+                    },
+                    'status': {
+                        'current': 'ok',
+                        'previous': 'ok',
+                        'severity': 0,
+                        'next_check': 0,
+                    },
+                    'type': 'warning'
+                }
+            }
+        })
+
 
     finally:
         es.indices.delete(index)

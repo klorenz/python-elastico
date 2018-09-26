@@ -920,10 +920,24 @@ class Alerter:
             log.debug("%s was_ok=%r now_ok=%r was_alert=%r",
                 log_key, was_ok, now_ok, was_alert)
 
+
             if was_ok and not now_ok:
                 rule_status['status.start'] = dt_isoformat(now)
                 rule_status['status.id'] = '{}_{}'.format(
                     rule_status['key'], rule_status['status.start'])
+
+            elif was_ok and now_ok:
+                for a in chain(alerts, [rule_status]):
+                    if 'status' not in a: continue
+
+                    _status = a['status']
+                    for k in ('start', 'id', 'end'):
+                        if k in _status:
+                            del _status[k]
+
+                if "all_clear" in rule_status:
+                    del rule_status['all_clear']
+
 
             # helper function to always return a list (if string or list)
             def _get_list(D,n):
@@ -931,8 +945,6 @@ class Alerter:
                 if not isinstance(l, list):
                     l = [l]
                 return l
-
-
 
             # update list of alerts done on this rule
             if was_ok:
@@ -947,6 +959,7 @@ class Alerter:
             S = self.config['alerter'].get('severity', {})
             severity = max([ a['status.current'] != 'ok' and S.get(a['type'], 1) or S.get('ok', 0) for a in alerts ]    )
             rule_status['status.severity'] = severity
+
 
             if was_alert and now_ok:
                 # have to send all-clear for this rule
