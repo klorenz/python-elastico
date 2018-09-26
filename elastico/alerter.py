@@ -287,6 +287,7 @@ class Alerter:
             status  = alert_data['status.current'].upper()
             subject = '[elastico] {} - {} {}'.format(status, type, name)
 
+
         # remove_subject = False
         # if 'message.subject' not in alert_data:
         #     remove_subject = True
@@ -745,7 +746,8 @@ class Alerter:
                 now = self.now()
                 delta = 0
                 try:
-                    delta = timedelta(seconds=int(last_rule['status']['realert']))
+                    if 'realert' in last_rule['status']:
+                        delta = timedelta(seconds=int(last_rule['status']['realert']))
                 except Exception as e:
                     log.error("error", exc_info=1)
 
@@ -779,7 +781,6 @@ class Alerter:
                                 delta = timedelta(seconds=delta_s)
                             else:
                                 delta = min_delta
-
 
                 time_passed = now - to_dt(last_rule['@timestamp'])
 
@@ -844,6 +845,12 @@ class Alerter:
         else:
             last_check = None
             alert['status.current'] = alert['status.previous'] = 'ok'
+
+        if 'triggered' in alert:
+            del alert['triggered']
+
+        if 'alert_trigger' in alert:
+            alert['alert_trigger'] = False
 
         log.debug("%s last_check=%r", log_key, last_check)
 
@@ -920,7 +927,6 @@ class Alerter:
             log.debug("%s was_ok=%r now_ok=%r was_alert=%r",
                 log_key, was_ok, now_ok, was_alert)
 
-
             if was_ok and not now_ok:
                 rule_status['status.start'] = dt_isoformat(now)
                 rule_status['status.id'] = '{}_{}'.format(
@@ -983,8 +989,9 @@ class Alerter:
                 if now_alert:
                     status_current = alert['status.current']
                     status_realert = alert.get('status.realert', 0)
+                    status_next_check = alert.get('status.next_check', 0)
 
-                    if status_current != 'ok' and status_realert == 0:
+                    if status_current != 'ok' and status_realert == 0 and status_next_check == 0:
                         self.do_alert(alert)
 
                 self.write_status(alert)
