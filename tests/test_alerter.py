@@ -1336,7 +1336,7 @@ def test_alerter_match():
                     'alerts': sorted(['fatal', 'warning']),
                     'key': 'value_check',
                     'message': 'all ok',
-                    'triggers': ['test_notifier'],
+                    'trigger': ['test_notifier'],
                     'name': 'value-check',
                     'status': {
                         'current': 'ok',
@@ -1345,6 +1345,23 @@ def test_alerter_match():
                         'severity': 0,
                         'start': '2018-05-05T10:07:00Z'
                     },
+                   'triggered': {'test_notifier': {'action': 'test_notifier',
+                                'command': 'echo '
+                                           '"hello"',
+                                'message': {'subject': '[elastico] '
+                                                       'OK '
+                                                       '- '
+                                                       'all-clear '
+                                                       'value-check',
+                                            'text': 'all '
+                                                    'ok'},
+                                'result': {'exit_code': 0,
+                                           'stdout': b'hell'
+                                                     b'o'},
+                                'status': 'ok',
+                                'stdout': True,
+                                'type': 'command'}},
+
                     'type': 'all-clear'},
                 'alerts': [],
                 'key': 'value_check',

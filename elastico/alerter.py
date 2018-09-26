@@ -1401,7 +1401,7 @@ class Alerter:
             all_clear['alerts'] = deepcopy(alerts)
 
         all_clear['status.current'] = 'ok'
-        all_clear['triggers'] = notify
+        all_clear['trigger'] = notify
         self.assert_key(all_clear)
         all_clear.update(rule.get('all_clear', {}))
         log.info("all_clear=%r", all_clear)
