@@ -306,4 +306,3 @@ def slugify(s, strip_=False, prefix_=None, suffix_=None):
     #     #result = 'x'+result
     log.debug("func='slugify' result=%r", result)
     return result
-
