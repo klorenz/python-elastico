@@ -6,6 +6,8 @@ log = logging.getLogger('elastico.config')
 
 from .util import string, PY3
 
+from jinja2 import Template
+
 from argdeco import ConfigDict, main
 class Undefined:
     pass
@@ -350,7 +352,12 @@ class Config(ConfigDict):
                         # make use of dotted notation possible -- is Config too heavyweight?
                         _data = dict((k,_Config(v)) for k,v in _data.items())
 
-                    result = formatter.format(current, **_data)
+                    if "{{" in current and "}}" in current:
+                        template = Template(current)
+                        result = template.render(**_data)
+                    else:
+                        # deprecated
+                        result = formatter.format(current, **_data)
 
                     #result = current.format(**_data)
                 except KeyError:

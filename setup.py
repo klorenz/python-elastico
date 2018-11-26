@@ -17,6 +17,7 @@ setup(
         'requests',
         'argdeco',
         'markdown',
+        'jinja2',
         'pytz',
         'python-dateutil',
     ],

@@ -12,3 +12,4 @@ def test_elastico_formatter():
     assert f.format('  {foo:2indent}', foo="a\nb\n") == "    a\n  b\n"
 #    assert f.format('  {foo!indent}', foo="a\nb\n") == "    a\n  b\n"
     #assert f.format('{foo!:json}', foo={'a': 'b'}) == 'dict: {"a": "b"}'
+

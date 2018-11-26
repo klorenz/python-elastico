@@ -71,6 +71,9 @@ class ElasticoFormatter(Formatter):
 #             # if dict, this is a complete query
 #             # https://kibana_urlkibana.domain/app/kibana#/discover?_g=()&_a=(columns:!(_source),filters:!(('$state':(store:appState),meta:(alias:!n,disabled:!f,index:'heartbeat-*',key:query,negate:!f,type:custom,value:'%7B%22bool%22:%7B%22must%22:%5B%7B%22term%22:%7B%22monitor.host%22:%22cal2.domain%22%7D%7D%5D%7D%7D'),query:(bool:(must:!((term:(monitor.host:cal2.domain))))))),index:'heartbeat-*',interval:auto,query:(language:kuery,query:'host.name:%20mail'),sort:!('@timestamp',desc))
 #             # https://kibana.domain/app/kibana#/discover?_g=()&_a=(columns:!(_source),filters:!(('$state':(store:appState),meta:(alias:!n,disabled:!f,index:'heartbeat-*',key:query,negate:!f,type:custom,value:'%7B%22bool%22:%7B%22must%22:%5B%7B%22term%22:%7B%22monitor.host%22:%22cal2.domain%22%7D%7D%5D%7D%7D'),query:(bool:(must:!((term:(monitor.host:cal2.domain))))))),index:'heartbeat-*',interval:auto,query:(language:lucene,query:'host.name:%20mail'),sort:!('@timestamp',desc))
+#
+#
+#  you can leave out the meta: https://kibana/app/kibana#/discover?_g=(refreshInterval:(display:Off,pause:!f,value:0),time:(from:'2018-09-19T21:52:43.131Z',mode:absolute,to:'2018-09-19T22:07:43.136Z'))&_a=(columns:!(_source),filters:!((query:(term:(type:fatal)))),index:dd5cc910-b083-11e8-93e0-cdcffe2ec1a0,interval:auto,query:(language:lucene,query:''),sort:!('@timestamp',desc))
 
         elif format_spec.endswith('json'):
             try:
