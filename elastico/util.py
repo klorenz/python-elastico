@@ -2,6 +2,7 @@ import sys, yaml, os, pytz, pyaml, json, re
 from os.path import exists, join, isdir
 from subprocess import Popen, PIPE
 from copy import deepcopy
+from elasticsearch.helpers import scan
 
 if (sys.version_info > (3, 0)):
     PY3 = True
@@ -58,6 +59,9 @@ def dt_isoformat(dt, sep='T', timespec='seconds'):
     return result+"Z"
 
 def to_dt(x, *args, **kwargs):
+    if isinstance(x, date):
+        x = dt_isoformat(x)
+
     if not isinstance(x, datetime):
         x = dt_parse(x, *args, **kwargs)
     if x.tzinfo is None:
